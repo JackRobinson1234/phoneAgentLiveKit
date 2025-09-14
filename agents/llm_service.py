@@ -1,0 +1,363 @@
+import os
+import json
+from typing import Dict, Any, List, Optional, Union
+from dataclasses import dataclass
+import openai
+from dotenv import load_dotenv
+
+from config.settings import LLM_CONFIG, AVAILABLE_MODELS
+
+# Load environment variables
+load_dotenv()
+
+@dataclass
+class ToolCall:
+    """Represents a tool call from the LLM"""
+    name: str
+    arguments: Dict[str, Any]
+    id: str = None
+
+@dataclass 
+class LLMResponse:
+    """Represents a response from the LLM"""
+    content: str
+    tool_calls: List[ToolCall] = None
+    usage: Dict[str, int] = None
+    model: str = None
+    finish_reason: str = None
+
+class OpenRouterService:
+    """Service for interacting with OpenRouter API using OpenAI client"""
+    
+    def __init__(self):
+        self.api_key = os.getenv('OPENROUTER_API_KEY')
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY environment variable is required")
+        
+        # Initialize OpenAI client with OpenRouter configuration
+        try:
+            # Initialize OpenAI client for OpenRouter - minimal config to avoid compatibility issues
+            self.client = openai.OpenAI(
+                base_url=LLM_CONFIG['api_base_url'],
+                api_key=self.api_key
+            )
+            print("✅ OpenRouter client initialized successfully!")
+        except Exception as e:
+            print(f"❌ Failed to initialize OpenAI client: {e}")
+            self.client = None
+        
+        self.default_model = LLM_CONFIG['model']
+        self.temperature = LLM_CONFIG['temperature']
+        self.max_tokens = LLM_CONFIG['max_tokens']
+        self.timeout = LLM_CONFIG['timeout']
+        self.retry_attempts = LLM_CONFIG['retry_attempts']
+    
+    def _test_connection(self):
+        """Test the OpenRouter connection with a simple request"""
+        if not self.client:
+            return False
+        
+        try:
+            # Make a minimal test request
+            response = self.client.chat.completions.create(
+                model="openai/gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1
+            )
+            return True
+        except Exception as e:
+            print(f"Connection test failed: {e}")
+            return False
+    
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """
+        Make a chat completion request to OpenRouter
+        
+        Args:
+            messages: List of message dictionaries
+            tools: Optional list of tool definitions
+            model: Model to use (defaults to configured model)
+            temperature: Temperature for generation
+            max_tokens: Maximum tokens to generate
+            **kwargs: Additional parameters
+            
+        Returns:
+            LLMResponse object
+        """
+        # Use provided parameters or fall back to defaults
+        model = model or self.default_model
+        temperature = temperature if temperature is not None else self.temperature
+        max_tokens = max_tokens or self.max_tokens
+        
+        # Prepare request parameters
+        request_params = {
+            'model': model,
+            'messages': messages,
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            **kwargs
+        }
+        
+        # Add tools if provided
+        if tools and LLM_CONFIG['use_tools']:
+            request_params['tools'] = tools
+            request_params['tool_choice'] = 'required'  # Force tool usage
+        
+        # Check if client is available
+        if not self.client:
+            raise Exception("OpenRouter client not initialized")
+        
+        try:
+            # Add OpenRouter headers to the request
+            extra_headers = {
+                "HTTP-Referer": "https://github.com/your-repo/HealthAgent",
+                "X-Title": "HealthAgent"
+            }
+            
+            # Make the API call with OpenRouter headers
+            response = self.client.chat.completions.create(
+                extra_headers=extra_headers,
+                **request_params
+            )
+            
+            # Extract response data
+            message = response.choices[0].message
+            content = message.content or ""
+            
+            # Parse tool calls if present
+            tool_calls = []
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                for tool_call in message.tool_calls:
+                    tool_calls.append(ToolCall(
+                        name=tool_call.function.name,
+                        arguments=json.loads(tool_call.function.arguments),
+                        id=tool_call.id
+                    ))
+            
+            return LLMResponse(
+                content=content,
+                tool_calls=tool_calls,
+                usage=response.usage.model_dump() if response.usage else None,
+                model=response.model,
+                finish_reason=response.choices[0].finish_reason
+            )
+            
+        except Exception as e:
+            # Try fallback model if available
+            if model != LLM_CONFIG['fallback_model']:
+                return self.chat_completion(
+                    messages=messages,
+                    tools=tools,
+                    model=LLM_CONFIG['fallback_model'],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    **kwargs
+                )
+            else:
+                raise Exception(f"OpenRouter API error: {str(e)}")
+    
+    def get_available_models(self) -> List[str]:
+        """Get list of available models"""
+        return list(AVAILABLE_MODELS.values())
+    
+    def is_available(self) -> bool:
+        """Check if the LLM service is available"""
+        return self.client is not None
+    
+    def test_connection(self) -> bool:
+        """Test the connection to OpenRouter"""
+        try:
+            response = self.chat_completion([
+                {"role": "user", "content": "Hello, please respond with 'OK'"}
+            ], model="openai/gpt-3.5-turbo", max_tokens=5)
+            return "ok" in response.content.lower()
+        except Exception as e:
+            print(f"Connection test failed: {e}")
+            return False
+
+class LLMToolManager:
+    """Manages tool definitions for LLM function calling"""
+    
+    def __init__(self):
+        self.tools = {}
+        self._register_default_tools()
+    
+    def _register_default_tools(self):
+        """Register default tools for appointment scheduling"""
+        
+        # Tool for extracting patient information
+        self.register_tool(
+            name="extract_patient_info",
+            description="Extract patient information from user input",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Patient's full name"
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Patient's email address"
+                    },
+                    "phone": {
+                        "type": "string", 
+                        "description": "Patient's phone number"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence score (0-1) for extracted information"
+                    }
+                },
+                "required": []
+            }
+        )
+        
+        # Tool for detecting appointment intent and preferences
+        self.register_tool(
+            name="analyze_appointment_request",
+            description="Analyze user input for appointment scheduling intent and preferences",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "intent": {
+                        "type": "string",
+                        "enum": ["schedule", "reschedule", "cancel", "inquiry", "other"],
+                        "description": "Primary intent of the user"
+                    },
+                    "appointment_type": {
+                        "type": "string",
+                        "enum": ["consultation", "follow-up", "checkup", "vaccination", "procedure"],
+                        "description": "Type of appointment requested"
+                    },
+                    "specialty": {
+                        "type": "string",
+                        "description": "Medical specialty requested"
+                    },
+                    "doctor_name": {
+                        "type": "string",
+                        "description": "Specific doctor name if mentioned"
+                    },
+                    "urgency": {
+                        "type": "string",
+                        "enum": ["urgent", "soon", "flexible", "normal"],
+                        "description": "Urgency level of the request"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence score (0-1) for the analysis"
+                    }
+                },
+                "required": ["intent", "confidence"]
+            }
+        )
+        
+        # Tool for parsing date/time requests
+        self.register_tool(
+            name="parse_datetime_request",
+            description="Parse natural language date and time requests",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "string",
+                        "description": "Parsed date in YYYY-MM-DD format"
+                    },
+                    "time": {
+                        "type": "string", 
+                        "description": "Parsed time in HH:MM format"
+                    },
+                    "relative_reference": {
+                        "type": "string",
+                        "description": "Relative time reference like 'tomorrow', 'next week'"
+                    },
+                    "flexibility": {
+                        "type": "string",
+                        "enum": ["exact", "morning", "afternoon", "evening", "flexible"],
+                        "description": "Time flexibility indicated by user"
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Confidence score (0-1) for parsed datetime"
+                    }
+                },
+                "required": ["confidence"]
+            }
+        )
+        
+        # Tool for generating contextual responses
+        self.register_tool(
+            name="generate_response",
+            description="Generate appropriate response based on conversation state and context",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "response": {
+                        "type": "string",
+                        "description": "The response message to send to the user"
+                    },
+                    "next_action": {
+                        "type": "string",
+                        "enum": ["continue", "transition", "error", "complete"],
+                        "description": "Recommended next action for the state machine"
+                    },
+                    "next_state": {
+                        "type": "string",
+                        "description": "Recommended next state if transitioning"
+                    },
+                    "context_updates": {
+                        "type": "object",
+                        "description": "Updates to add to conversation context"
+                    }
+                },
+                "required": ["response", "next_action"]
+            }
+        )
+    
+    def register_tool(self, name: str, description: str, parameters: Dict[str, Any]):
+        """Register a new tool"""
+        self.tools[name] = {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": description,
+                "parameters": parameters
+            }
+        }
+    
+    def get_tool(self, name: str) -> Optional[Dict]:
+        """Get a specific tool definition"""
+        return self.tools.get(name)
+    
+    def get_all_tools(self) -> List[Dict]:
+        """Get all registered tools"""
+        return list(self.tools.values())
+    
+    def get_tools_for_state(self, state_name: str) -> List[Dict]:
+        """Get relevant tools for a specific state"""
+        state_tool_mapping = {
+            "GREETING": ["analyze_appointment_request", "generate_response"],
+            "COLLECT_PATIENT_INFO": ["extract_patient_info", "generate_response"],
+            "COLLECT_APPOINTMENT_TYPE": ["analyze_appointment_request", "generate_response"],
+            "COLLECT_DOCTOR_PREFERENCE": ["analyze_appointment_request", "generate_response"],
+            "COLLECT_DATE_TIME": ["parse_datetime_request", "generate_response"],
+            "SHOW_AVAILABILITY": ["generate_response"],
+            "CONFIRM_APPOINTMENT": ["generate_response"],
+            "BOOKING_COMPLETE": ["generate_response"],
+            "ERROR_HANDLING": ["generate_response"]
+        }
+        
+        tool_names = state_tool_mapping.get(state_name, ["generate_response"])
+        return [self.tools[name] for name in tool_names if name in self.tools]
+
+# Global instances
+llm_service = OpenRouterService()
+tool_manager = LLMToolManager()
