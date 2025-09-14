@@ -101,14 +101,62 @@ GET /health
 
 **Start conversation:**
 ```bash
-curl -X POST http://localhost:5000/conversations
+curl -X POST http://localhost:8080/conversations
 ```
 
 **Send message:**
 ```bash
-curl -X POST http://localhost:5000/conversations/{id}/messages \
+curl -X POST http://localhost:8080/conversations/{id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": "I need a cardiologist"}'
+```
+
+**Complete terminal workflow:**
+```bash
+# 1. Start conversation and save the ID
+CONV_ID=$(curl -s -X POST http://localhost:8080/conversations | jq -r '.conversation_id')
+
+# 2. Send messages
+curl -X POST http://localhost:8080/conversations/$CONV_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"message": "hello"}'
+
+curl -X POST http://localhost:8080/conversations/$CONV_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I need a cardiologist"}'
+
+curl -X POST http://localhost:8080/conversations/$CONV_ID/messages \
+  -H "Content-Type: application/json" \
+  -d '{"message": "John Smith"}'
+
+# 3. Check conversation status
+curl http://localhost:8080/conversations/$CONV_ID
+
+# 4. End conversation
+curl -X DELETE http://localhost:8080/conversations/$CONV_ID
+```
+
+**Example responses:**
+```json
+// Starting conversation
+{
+  "conversation_id": "c0e157bb-cb1b-47cf-816b-2b0b581de848",
+  "message": "Hello! I'm HealthBot, your virtual assistant...",
+  "status": "started"
+}
+
+// After sending "I need a cardiologist"
+{
+  "context": {
+    "appointment_type": "consultation",
+    "patient_name": null,
+    "specialty": "cardiology",
+    "turn_count": 2
+  },
+  "conversation_id": "c0e157bb-cb1b-47cf-816b-2b0b581de848",
+  "current_state": "COLLECT_PATIENT_INFO",
+  "message": "I'll help you schedule an appointment. First, I need some information. What's your name?"
+}
 ```
 
 ### Python Example
@@ -116,12 +164,12 @@ curl -X POST http://localhost:5000/conversations/{id}/messages \
 import requests
 
 # Start conversation
-response = requests.post("http://localhost:5000/conversations")
+response = requests.post("http://localhost:8080/conversations")
 conversation_id = response.json()["conversation_id"]
 
 # Send message
 response = requests.post(
-    f"http://localhost:5000/conversations/{conversation_id}/messages",
+    f"http://localhost:8080/conversations/{conversation_id}/messages",
     json={"message": "I need an eye doctor"}
 )
 
@@ -131,13 +179,13 @@ print(response.json()["message"])
 ### JavaScript Example
 ```javascript
 // Start conversation
-const startResponse = await fetch('http://localhost:5000/conversations', {
+const startResponse = await fetch('http://localhost:8080/conversations', {
   method: 'POST'
 });
 const { conversation_id } = await startResponse.json();
 
 // Send message
-const messageResponse = await fetch(`http://localhost:5000/conversations/${conversation_id}/messages`, {
+const messageResponse = await fetch(`http://localhost:8080/conversations/${conversation_id}/messages`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ message: 'I need a dentist appointment' })
