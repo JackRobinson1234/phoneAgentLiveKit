@@ -310,3 +310,268 @@ What works best for you?"""
             return parser.parse(input_str, fuzzy=True)
         except:
             return None
+class LLMShowAvailabilityState(LLMEnhancedState):
+    """LLM-enhanced state for showing available appointment slots"""
+    
+    def __init__(self, database: MockDatabase):
+        system_prompt = """You are HealthBot showing available appointment slots to users.
+
+Current State: SHOW_AVAILABILITY - Displaying available slots and getting user selection
+
+Your tasks:
+1. Show the user available appointment slots based on their preferences
+2. Help them select a slot or offer alternatives
+3. Use the generate_response tool to provide your response
+
+Available tools:
+- generate_response: Provide your response and next action
+- get_available_slots: Get available appointment slots based on context
+
+When the user selects a slot, set next_action="transition" and next_state="CONFIRM_APPOINTMENT".
+If they want more options, set next_action="transition" and next_state="COLLECT_DATE_TIME"."""
+        
+        super().__init__("SHOW_AVAILABILITY", system_prompt)
+        self.database = database
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        preferred_datetime = context.get('preferred_datetime')
+        if not preferred_datetime:
+            return "I need to know your preferred date and time first. When would you like to schedule your appointment?"
+            
+        # Find suitable doctors
+        suitable_doctors = self._find_suitable_doctors(context)
+        
+        if not suitable_doctors:
+            return "I'm sorry, but no doctors are available for your preferred specialty. Would you like to try a different specialty or date?"
+        
+        # Find available slots
+        available_slots = []
+        for doctor in suitable_doctors:
+            slots = self.database.get_available_slots(
+                doctor.id, 
+                preferred_datetime, 
+                duration_minutes=30
+            )
+            for slot in slots[:3]:  # Show up to 3 slots per doctor
+                available_slots.append((doctor, slot))
+        
+        if not available_slots:
+            return "I'm sorry, but there are no available slots for your preferred date and time. Would you like to try a different date?"
+        
+        # Store slots in context
+        context['available_slots'] = available_slots
+        
+        # Display available slots
+        message = "Here are the available appointment slots:\n\n"
+        
+        for i, (doctor, slot) in enumerate(available_slots[:5], 1):  # Show up to 5 options
+            formatted_time = slot.strftime("%A, %B %d at %I:%M %p")
+            message += f"{i}. Dr. {doctor.name} ({doctor.specialty}) - {formatted_time}\n"
+        
+        message += "\nPlease select an option by number, or type 'more' to see other dates."
+        return message
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        return self.process_input_with_llm(user_input, context)
+    
+    def _find_suitable_doctors(self, context: Dict[str, Any]) -> list:
+        """Find doctors based on user preferences"""
+        if 'preferred_doctor_id' in context:
+            doctor = self.database.get_doctor(context['preferred_doctor_id'])
+            return [doctor] if doctor else []
+        
+        elif 'preferred_specialty' in context:
+            return self.database.get_doctors_by_specialty(context['preferred_specialty'])
+        
+        else:
+            return self.database.get_all_doctors()
+
+class LLMConfirmAppointmentState(LLMEnhancedState):
+    """LLM-enhanced state for confirming appointment details"""
+    
+    def __init__(self, database: MockDatabase):
+        system_prompt = """You are HealthBot confirming appointment details with the user.
+
+Current State: CONFIRM_APPOINTMENT - Getting final confirmation for booking
+
+Your tasks:
+1. Show the user their selected appointment details
+2. Ask for confirmation to book the appointment
+3. Use the generate_response tool to provide your response
+4. Use the book_appointment tool when the user confirms
+
+Available tools:
+- generate_response: Provide your response and next action
+- book_appointment: Book the appointment in the system
+
+When the user confirms, use book_appointment tool, then set next_action="transition" and next_state="BOOKING_COMPLETE".
+If they cancel, set next_action="transition" and next_state="COLLECT_DATE_TIME"."""
+        
+        super().__init__("CONFIRM_APPOINTMENT", system_prompt)
+        self.database = database
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        doctor = context.get('selected_doctor')
+        appointment_datetime = context.get('selected_datetime')
+        appointment_type = context.get('appointment_type')
+        
+        if not doctor or not appointment_datetime or not appointment_type:
+            return "I'm sorry, but I don't have all the necessary appointment details. Let's start over."
+            
+        formatted_time = appointment_datetime.strftime("%A, %B %d, %Y at %I:%M %p")
+        
+        return (f"Please confirm your appointment details:\n\n"
+                f"Doctor: Dr. {doctor.name} ({doctor.specialty})\n"
+                f"Date & Time: {formatted_time}\n"
+                f"Appointment Type: {appointment_type.value.title()}\n"
+                f"Duration: 30 minutes\n\n"
+                f"Type 'confirm' to book this appointment, or 'cancel' to start over.")
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        return self.process_input_with_llm(user_input, context)
+        
+    def _handle_book_appointment(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle appointment booking"""
+        try:
+            appointment = self.database.create_appointment(
+                patient_id=context['patient_id'],
+                doctor_id=context['selected_doctor'].id,
+                appointment_datetime=context['selected_datetime'],
+                appointment_type=context['appointment_type'],
+                duration_minutes=30
+            )
+            
+            if appointment:
+                context['appointment_id'] = appointment.id
+                return {
+                    'success': True,
+                    'appointment_id': appointment.id,
+                    'message': 'Appointment booked successfully'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Failed to book appointment'
+                }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+class LLMBookingCompleteState(LLMEnhancedState):
+    """LLM-enhanced state for booking completion"""
+    
+    def __init__(self, database: MockDatabase):
+        system_prompt = """You are HealthBot confirming a successful appointment booking.
+
+Current State: BOOKING_COMPLETE - Confirming successful booking and offering next steps
+
+Your tasks:
+1. Confirm the successful booking with appointment details
+2. Offer additional assistance or conclude the conversation
+3. Use the generate_response tool to provide your response
+
+Available tools:
+- generate_response: Provide your response and next action
+- get_appointment_details: Get details about the booked appointment
+
+When the user is done, set next_action="complete" to end the conversation.
+If they want another appointment, set next_action="transition" and next_state="COLLECT_APPOINTMENT_TYPE".
+"""
+        
+        super().__init__("BOOKING_COMPLETE", system_prompt)
+        self.database = database
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        appointment_id = context.get('appointment_id')
+        if not appointment_id:
+            return "I'm sorry, but I don't have the appointment details. Would you like to schedule a new appointment?"
+            
+        appointment = self.database.get_appointment(appointment_id)
+        doctor = self.database.get_doctor(appointment.doctor_id)
+        
+        formatted_time = appointment.get_formatted_datetime()
+        
+        message = (f"✅ Your appointment has been successfully booked!\n\n"
+                  f"Appointment Details:\n"
+                  f"Doctor: Dr. {doctor.name} ({doctor.specialty})\n"
+                  f"Date & Time: {formatted_time}\n"
+                  f"Appointment ID: {appointment.id}\n\n"
+                  f"You will receive a confirmation email/SMS shortly. "
+                  f"Please arrive 15 minutes early for your appointment.\n\n"
+                  f"Is there anything else I can help you with?")
+        
+        return message
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        return self.process_input_with_llm(user_input, context)
+        
+    def _handle_get_appointment_details(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get appointment details"""
+        try:
+            appointment_id = context.get('appointment_id')
+            if not appointment_id:
+                return {
+                    'success': False,
+                    'error': 'No appointment ID in context'
+                }
+                
+            appointment = self.database.get_appointment(appointment_id)
+            if not appointment:
+                return {
+                    'success': False,
+                    'error': 'Appointment not found'
+                }
+                
+            doctor = self.database.get_doctor(appointment.doctor_id)
+            
+            return {
+                'success': True,
+                'appointment_id': appointment.id,
+                'doctor_name': doctor.name,
+                'doctor_specialty': doctor.specialty,
+                'datetime': appointment.get_formatted_datetime(),
+                'type': appointment.appointment_type.value
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+class LLMErrorHandlingState(LLMEnhancedState):
+    """LLM-enhanced state for error handling"""
+    
+    def __init__(self, database: MockDatabase):
+        system_prompt = """You are HealthBot helping users recover from errors.
+
+Current State: ERROR_HANDLING - Helping the user recover from an error
+
+Your tasks:
+1. Acknowledge the error that occurred
+2. Offer recovery options (start over, try again, or end conversation)
+3. Use the generate_response tool to provide your response
+
+Available tools:
+- generate_response: Provide your response and next action
+
+When the user wants to start over, set next_action="transition" and next_state="GREETING".
+When the user wants to try again, set next_action="transition" and next_state equal to the previous_state in context.
+When the user wants to end the conversation, set next_action="complete"."""
+        
+        super().__init__("ERROR_HANDLING", system_prompt)
+        self.database = database
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        error_message = context.get('error_message', 'An unexpected error occurred.')
+        
+        return (f"{error_message}\n\n"
+                f"Would you like to:\n"
+                f"1. Start over\n"
+                f"2. Try again\n"
+                f"3. End conversation\n\n"
+                f"Please select an option.")
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        return self.process_input_with_llm(user_input, context)

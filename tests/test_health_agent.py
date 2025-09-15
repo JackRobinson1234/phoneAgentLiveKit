@@ -11,17 +11,17 @@ from datetime import datetime, timedelta
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.health_agent import HealthAgent
+from agents.llm_health_agent import LLMHealthAgent
 from models.database import MockDatabase
 from models.appointment import AppointmentType
 from state_machine.state_machine import StateMachine
 
-class TestHealthAgent(unittest.TestCase):
+class TestLLMHealthAgent(unittest.TestCase):
     """Test cases for the Health Agent"""
     
     def setUp(self):
         """Set up test fixtures"""
-        self.agent = HealthAgent()
+        self.agent = LLMHealthAgent()
     
     def test_agent_initialization(self):
         """Test that the agent initializes properly"""
@@ -228,7 +228,7 @@ def run_example_conversation():
     print("🧪 RUNNING EXAMPLE CONVERSATION")
     print("="*60)
     
-    agent = HealthAgent()
+    agent = LLMHealthAgent()
     
     # Start conversation
     print("🤖 Starting conversation...")
