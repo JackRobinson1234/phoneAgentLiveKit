@@ -83,10 +83,7 @@ class LLMHealthAgent:
         if not self.session_id:
             raise RuntimeError("Conversation not started. Call start_conversation() first.")
         
-        try:
-            # Get current state and context
-            current_state = self.state_machine.get_current_state_name()
-            current_context = self.state_machine.get_context()
+        try:           
             
             # Process directly through state machine
             response = self.state_machine.process_user_input(user_input)
