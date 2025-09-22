@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 import openai
 from dotenv import load_dotenv
+from llm_eval import identify_llm_executor
 
 from config.settings import LLM_CONFIG, AVAILABLE_MODELS
 
@@ -69,6 +70,15 @@ class OpenRouterService:
             print(f"Connection test failed: {e}")
             return False
     
+    @identify_llm_executor(
+        model_param="model",
+        context_param="messages",
+        temperature_param="temperature",
+        max_tokens_param="max_tokens",
+        tools_param="tools",
+        output_text="content",
+        output_usage="usage"
+    )
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
@@ -191,64 +201,36 @@ class LLMToolManager:
         self._register_default_tools()
     
     def _register_default_tools(self):
-        """Register default tools for appointment scheduling"""
+        """Register default tools for animal control"""
         
-        # Tool for extracting patient information
+        # Tool for analyzing animal control requests
         self.register_tool(
-            name="extract_patient_info",
-            description="Extract patient information from user input",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "Patient's full name"
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Patient's email address"
-                    },
-                    "phone": {
-                        "type": "string", 
-                        "description": "Patient's phone number"
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "description": "Confidence score (0-1) for extracted information"
-                    }
-                },
-                "required": []
-            }
-        )
-        
-        # Tool for detecting appointment intent and preferences
-        self.register_tool(
-            name="analyze_appointment_request",
-            description="Analyze user input for appointment scheduling intent and preferences",
+            name="analyze_request",
+            description="Analyze user input for animal control service needs",
             parameters={
                 "type": "object",
                 "properties": {
                     "intent": {
                         "type": "string",
-                        "enum": ["schedule", "reschedule", "cancel", "inquiry", "other"],
+                        "enum": ["emergency", "found", "lost", "surrender", "info", "other"],
                         "description": "Primary intent of the user"
                     },
-                    "appointment_type": {
+                    "animal_type": {
                         "type": "string",
-                        "enum": ["consultation", "follow-up", "checkup", "vaccination", "procedure"],
-                        "description": "Type of appointment requested"
+                        "description": "Type of animal mentioned (dog, cat, etc.)"
                     },
-                    "specialty": {
+                    "service_type": {
                         "type": "string",
-                        "description": "Medical specialty requested"
+                        "enum": ["emergency", "found", "lost", "surrender", "info"],
+                        "description": "Type of animal control service needed"
                     },
-                    "doctor_name": {
+                    "location": {
                         "type": "string",
-                        "description": "Specific doctor name if mentioned"
+                        "description": "Location mentioned in the request"
                     },
                     "urgency": {
                         "type": "string",
-                        "enum": ["urgent", "soon", "flexible", "normal"],
+                        "enum": ["emergency", "urgent", "standard", "low"],
                         "description": "Urgency level of the request"
                     },
                     "confidence": {
@@ -344,14 +326,16 @@ class LLMToolManager:
     def get_tools_for_state(self, state_name: str) -> List[Dict]:
         """Get relevant tools for a specific state"""
         state_tool_mapping = {
-            "GREETING": ["analyze_appointment_request", "generate_response"],
-            "COLLECT_PATIENT_INFO": ["extract_patient_info", "generate_response"],
-            "COLLECT_APPOINTMENT_TYPE": ["analyze_appointment_request", "generate_response"],
-            "COLLECT_DOCTOR_PREFERENCE": ["analyze_appointment_request", "generate_response"],
-            "COLLECT_DATE_TIME": ["parse_datetime_request", "generate_response"],
-            "SHOW_AVAILABILITY": ["generate_response"],
-            "CONFIRM_APPOINTMENT": ["generate_response"],
-            "BOOKING_COMPLETE": ["generate_response"],
+            # Animal control agent states
+            "GREETING": ["analyze_request", "generate_response"],
+            "EMERGENCY_CASE": ["analyze_request", "generate_response"],
+            "REPORT_FOUND": ["analyze_request", "generate_response"],
+            "REPORT_LOST": ["analyze_request", "generate_response"],
+            "PET_SURRENDER": ["analyze_request", "generate_response"],
+            "SCHEDULE_SURRENDER": ["parse_datetime_request", "generate_response"],
+            "GENERAL_INFO": ["analyze_request", "generate_response"],
+            "CASE_CONFIRMATION": ["generate_response"],
+            "CASE_COMPLETE": ["generate_response"],
             "ERROR_HANDLING": ["generate_response"]
         }
         

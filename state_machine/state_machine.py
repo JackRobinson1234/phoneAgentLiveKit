@@ -1,17 +1,17 @@
 from typing import Dict, Any, Optional
-from .base_state import BaseState, StateResult
+from .animal_control_state import AnimalControlState, StateResult
 
 class StateMachine:
     """State machine engine for managing conversation flow"""
     
     def __init__(self):
-        self.states: Dict[str, BaseState] = {}
-        self.current_state: Optional[BaseState] = None
+        self.states: Dict[str, AnimalControlState] = {}
+        self.current_state: Optional[AnimalControlState] = None
         self.context: Dict[str, Any] = {}
         self.conversation_history: list = []
         self.is_complete = False
     
-    def add_state(self, state: BaseState) -> None:
+    def add_state(self, state: AnimalControlState) -> None:
         """Add a state to the state machine"""
         self.states[state.name] = state
     

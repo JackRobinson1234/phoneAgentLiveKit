@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Health Agent - AI Doctor Appointment Scheduler
-Main application entry point for the health agent system.
+Animal Control Agent - AI Animal Control Services Assistant
+Main application entry point for the animal control agent system.
 """
 
 import sys
@@ -11,27 +11,27 @@ from datetime import datetime
 # Add the project root to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from agents.llm_health_agent import LLMHealthAgent
+from agents.llm_animal_control_agent import LLMAnimalControlAgent
 from config.settings import AGENT_CONFIG
 
-class HealthAgentCLI:
+class AnimalControlAgentCLI:
     """Command-line interface for the Health Agent"""
     
     def __init__(self):
-        self.agent = LLMHealthAgent()
+        self.agent = LLMAnimalControlAgent()
         self.running = False
     
     def display_welcome(self):
         """Display welcome message and instructions"""
         print("=" * 60)
-        print("🏥 HEALTH AGENT - AI Doctor Appointment Scheduler")
+        print("🐾 ANIMAL CONTROL AGENT - AI Animal Services Assistant")
         print("=" * 60)
-        print("Welcome! I'm your AI assistant for scheduling doctor appointments.")
+        print("Welcome! I'm your AI assistant for animal control services.")
         print("\nCommands:")
         print("  • Type your messages naturally")
         print("  • 'help' - Show available commands")
         print("  • 'status' - Show conversation status")
-        print("  • 'doctors' - List available doctors")
+        print("  • 'services' - List available services")
         print("  • 'llm-test' - Test LLM integration")
         print("  • 'reset' - Start a new conversation")
         print("  • 'quit' or 'exit' - End the session")
@@ -42,18 +42,17 @@ class HealthAgentCLI:
         print("\n📋 HELP - Available Commands:")
         print("  help          - Show this help message")
         print("  status        - Show current conversation status")
-        print("  doctors       - List all available doctors")
-        print("  specialties   - List available medical specialties")
+        print("  services      - List all available animal control services")
         print("  stats         - Show database statistics")
         print("  history       - Show conversation history")
-        print("  appointment   - Show current appointment details")
+        print("  case          - Show current case details")
         print("  reset         - Start a new conversation")
         print("  quit/exit     - End the session")
         print("\n💬 Natural Language:")
         print("  You can also interact naturally, for example:")
-        print("  • 'I need to schedule an appointment'")
-        print("  • 'Book me with a cardiologist'")
-        print("  • 'I want to see Dr. Johnson tomorrow'")
+        print("  • 'I found a stray dog'")
+        print("  • 'I need to report an injured animal'")
+        print("  • 'My pet is missing'")
         print()
     
     def handle_command(self, user_input: str) -> bool:
@@ -100,31 +99,22 @@ class HealthAgentCLI:
                 print(f"  Turn Count: {status['turn_count']}")
             return True
         
-        elif command == 'doctors':
-            doctors = self.agent.get_available_doctors()
-            print(f"\n👨‍⚕️ Available Doctors ({len(doctors)}):")
-            for doctor in doctors:
-                days = ", ".join(doctor['available_days'])
-                hours = f"{doctor['available_hours']['start']}-{doctor['available_hours']['end']}"
-                print(f"  • {doctor['name']} - {doctor['specialty']}")
-                print(f"    Available: {days} ({hours})")
-            return True
-        
-        elif command == 'specialties':
-            specialties = self.agent.get_available_specialties()
-            print(f"\n🏥 Available Specialties ({len(specialties)}):")
-            for specialty in specialties:
-                print(f"  • {specialty}")
+        elif command == 'services':
+            services = self.agent.get_available_services()
+            print(f"\n🐾 Available Animal Control Services ({len(services)}):")
+            for service in services:
+                print(f"  • {service['name']}")
+                print(f"    {service['description']}")
             return True
         
         elif command == 'stats':
             stats = self.agent.get_database_stats()
             print(f"\n📈 Database Statistics:")
-            print(f"  Total Doctors: {stats['total_doctors']}")
-            print(f"  Active Doctors: {stats['active_doctors']}")
-            print(f"  Total Patients: {stats['total_patients']}")
-            print(f"  Total Appointments: {stats['total_appointments']}")
-            print(f"  Available Specialties: {stats['available_specialties']}")
+            print(f"  Total Cases: {stats['total_cases']}")
+            print(f"  Emergency Cases: {stats['emergency_cases']}")
+            print(f"  Found Reports: {stats['found_reports']}")
+            print(f"  Lost Reports: {stats['lost_reports']}")
+            print(f"  Surrenders Scheduled: {stats['surrenders_scheduled']}")
             print(f"  LLM Enhanced: {stats.get('llm_enabled', False)}")
             if stats.get('llm_connection_test') is not None:
                 print(f"  LLM Connection: {'✅' if stats['llm_connection_test'] else '❌'}")
@@ -143,18 +133,18 @@ class HealthAgentCLI:
                     print(f"  [{timestamp}] {speaker}: {message}")
             return True
         
-        elif command == 'appointment':
-            appointment = self.agent.get_appointment_summary()
-            if not appointment:
-                print("\n📅 No appointment scheduled yet.")
+        elif command == 'case':
+            case = self.agent.get_case_summary()
+            if not case:
+                print("\n📋 No case created yet.")
             else:
-                print(f"\n📅 Current Appointment:")
-                print(f"  ID: {appointment['appointment_id']}")
-                print(f"  Patient: {appointment['patient_name']}")
-                print(f"  Doctor: {appointment['doctor_name']} ({appointment['specialty']})")
-                print(f"  Date & Time: {appointment['appointment_datetime']}")
-                print(f"  Type: {appointment['appointment_type']}")
-                print(f"  Status: {appointment['status']}")
+                print(f"\n📋 Current Case:")
+                print(f"  ID: {case['case_id']}")
+                print(f"  Type: {case['case_type'].title()}")
+                print(f"  Animal: {case['animal_type']}")
+                print(f"  Location: {case['location']}")
+                print(f"  Status: {case['status'].title()}")
+                print(f"  Created: {case['created_at']}")
             return True
         
         elif command == 'reset':
@@ -196,11 +186,11 @@ class HealthAgentCLI:
                     
                     # Check if conversation is complete
                     if self.agent.get_conversation_status()['status'] == 'completed':
-                        print("\n✅ Conversation completed successfully!")
+                        print("\n✅ Case submitted successfully!")
                         
                         # Ask if user wants to start a new conversation
                         while True:
-                            continue_input = input("\nWould you like to start a new conversation? (y/n): ").lower().strip()
+                            continue_input = input("\nWould you like to submit another case? (y/n): ").lower().strip()
                             if continue_input in ['y', 'yes']:
                                 response = self.agent.reset_conversation()
                                 print(f"\n🤖 {response}")
@@ -228,12 +218,12 @@ class HealthAgentCLI:
             print("Please check your installation and try again.")
         
         finally:
-            print("\n👋 Thank you for using Health Agent! Goodbye!")
+            print("\n👋 Thank you for using Animal Control Agent! Goodbye!")
 
 def main():
     """Main entry point"""
     try:
-        cli = HealthAgentCLI()
+        cli = AnimalControlAgentCLI()
         cli.run()
     except Exception as e:
         print(f"❌ Critical error: {str(e)}")

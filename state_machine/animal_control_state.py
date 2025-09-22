@@ -1,26 +1,37 @@
-from typing import Dict, Any, Tuple, Optional, List
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional, Tuple, List
+from enum import Enum
 from datetime import datetime
 import json
 
-from .base_state import BaseState, StateResult
 from agents.llm_service import llm_service, tool_manager
 from config.settings import AVAILABLE_MODELS
 
-class LLMEnhancedState(BaseState):
-    """Enhanced base state that uses LLM for processing and response generation"""
+class StateResult(Enum):
+    """Possible results from state execution"""
+    CONTINUE = "continue"  # Stay in current state
+    TRANSITION = "transition"  # Move to next state
+    ERROR = "error"  # Error occurred
+    COMPLETE = "complete"  # Conversation complete
+
+class AnimalControlState(ABC):
+    """Consolidated state class for animal control with LLM capabilities"""
     
-    def __init__(self, name: str, system_prompt: str = None):
-        super().__init__(name)
+    def __init__(self, name: str, system_prompt: str = None, database = None):
+        self.name = name
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.conversation_history = []
         self.model = AVAILABLE_MODELS.get('conversation')
+        self.retry_count = 0
+        self.max_retries = 3
+        self.database = database
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for this state"""
-        return f"""You are HealthBot, an AI assistant helping users schedule doctor appointments. 
+        return f"""You are AnimalControlBot, an AI assistant helping users with animal control services. 
         
 Current State: {self.name}
-Your role: Process user input and guide them through the appointment scheduling process.
+Your role: Process user input and guide them through the animal control service process.
 
 Guidelines:
 - Be helpful, professional, and empathetic
@@ -31,6 +42,86 @@ Guidelines:
 - Handle errors gracefully and offer alternatives
 
 Always use the generate_response tool to provide your final response and next action."""
+    
+    @abstractmethod
+    def enter(self, context: Dict[str, Any]) -> str:
+        """
+        Called when entering this state.
+        Returns the message to display to the user.
+        """
+        pass
+    
+    @abstractmethod
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        """
+        Process user input and determine next action.
+        
+        Args:
+            user_input: The user's input string
+            context: Current conversation context
+            
+        Returns:
+            Tuple of (StateResult, next_state_name, updated_context)
+        """
+        pass
+    
+    def exit(self, context: Dict[str, Any]) -> None:
+        """
+        Called when leaving this state.
+        Can be used for cleanup or final processing.
+        """
+        pass
+    
+    def handle_error(self, error: Exception, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        """
+        Handle errors that occur during state processing.
+        
+        Args:
+            error: The exception that occurred
+            context: Current conversation context
+            
+        Returns:
+            Tuple of (StateResult, next_state_name, updated_context)
+        """
+        self.retry_count += 1
+        
+        if self.retry_count >= self.max_retries:
+            context['error_message'] = f"Maximum retries exceeded in state {self.name}"
+            return StateResult.ERROR, "ERROR_HANDLING", context
+        
+        context['error_message'] = f"An error occurred: {str(error)}. Please try again."
+        return StateResult.CONTINUE, None, context
+    
+    def reset_retry_count(self):
+        """Reset the retry counter"""
+        self.retry_count = 0
+    
+    def validate_context(self, context: Dict[str, Any], required_keys: list) -> bool:
+        """
+        Validate that required keys exist in context.
+        
+        Args:
+            context: Current conversation context
+            required_keys: List of required context keys
+            
+        Returns:
+            True if all required keys exist, False otherwise
+        """
+        return all(key in context for key in required_keys)
+    
+    def get_context_value(self, context: Dict[str, Any], key: str, default: Any = None) -> Any:
+        """
+        Safely get a value from context with a default.
+        
+        Args:
+            context: Current conversation context
+            key: The key to retrieve
+            default: Default value if key doesn't exist
+            
+        Returns:
+            The value from context or the default
+        """
+        return context.get(key, default)
     
     def _build_messages(self, user_input: str, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """Build message history for LLM"""
@@ -58,19 +149,27 @@ Always use the generate_response tool to provide your final response and next ac
         """Format relevant context information for the LLM"""
         info_parts = []
         
-        # Patient information
-        if context.get('patient_name'):
-            info_parts.append(f"Patient: {context['patient_name']}")
-        if context.get('patient_contact'):
-            info_parts.append(f"Contact: {context['patient_contact']}")
+        # Animal information
+        if context.get('animal_type'):
+            info_parts.append(f"Animal type: {context['animal_type']}")
+        if context.get('animal_name'):
+            info_parts.append(f"Animal name: {context['animal_name']}")
+        if context.get('animal_description'):
+            info_parts.append(f"Description: {context['animal_description']}")
         
-        # Appointment details
-        if context.get('appointment_type'):
-            info_parts.append(f"Appointment type: {context['appointment_type']}")
-        if context.get('preferred_specialty'):
-            info_parts.append(f"Specialty: {context['preferred_specialty']}")
-        if context.get('preferred_datetime'):
-            info_parts.append(f"Preferred time: {context['preferred_datetime']}")
+        # Location information
+        if context.get('location'):
+            info_parts.append(f"Location: {context['location']}")
+        if context.get('last_seen_location'):
+            info_parts.append(f"Last seen: {context['last_seen_location']}")
+        if context.get('location_found'):
+            info_parts.append(f"Found at: {context['location_found']}")
+        
+        # Contact information
+        if context.get('owner_name'):
+            info_parts.append(f"Owner: {context['owner_name']}")
+        if context.get('owner_contact'):
+            info_parts.append(f"Contact: {context['owner_contact']}")
         
         # Current progress
         if context.get('turn_count'):
@@ -94,6 +193,9 @@ Always use the generate_response tool to provide your final response and next ac
                 tools=tools,
                 model=self.model
             )
+            print(f"Model used: {response.model}")
+            print(f"Tokens used: {response.usage.get('total_tokens')}")
+            print(f"Response time: {response.usage.get('total_tokens')}")
             
             # Process tool calls
             updated_context = context.copy()
@@ -161,10 +263,8 @@ Always use the generate_response tool to provide your final response and next ac
         print(f"🔧 SYSTEM: Processing tool '{tool_name}' with args: {args}")
         
         try:
-            if tool_name == "extract_patient_info":
-                return self._handle_patient_info_extraction(args, context)
-            elif tool_name == "analyze_appointment_request":
-                return self._handle_appointment_analysis(args, context)
+            if tool_name == "analyze_request":
+                return self._handle_animal_request_analysis(args, context)
             elif tool_name == "parse_datetime_request":
                 return self._handle_datetime_parsing(args, context)
             elif tool_name == "generate_response":
@@ -176,34 +276,18 @@ Always use the generate_response tool to provide your final response and next ac
             print(f"🔧 SYSTEM: Error processing tool '{tool_name}': {str(e)}")
             return None
     
-    def _handle_patient_info_extraction(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle patient information extraction"""
-        updates = {}
-        
-        if args.get('name') and args.get('confidence', 0) > 0.7:
-            updates['extracted_name'] = args['name']
-            updates['patient_name'] = args['name']  # Store in expected key
-        if args.get('email') and args.get('confidence', 0) > 0.7:
-            updates['extracted_email'] = args['email']
-            updates['patient_contact'] = args['email']  # Store in expected key
-        if args.get('phone') and args.get('confidence', 0) > 0.7:
-            updates['extracted_phone'] = args['phone']
-            updates['patient_contact'] = args['phone']  # Store in expected key
-        
-        return {'context_updates': updates}
-    
-    def _handle_appointment_analysis(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle appointment request analysis"""
+    def _handle_animal_request_analysis(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle animal control request analysis"""
         updates = {}
         
         if args.get('intent') and args.get('confidence', 0) > 0.7:
             updates['detected_intent'] = args['intent']
-        if args.get('appointment_type'):
-            updates['suggested_appointment_type'] = args['appointment_type']
-        if args.get('specialty'):
-            updates['suggested_specialty'] = args['specialty']
-        if args.get('doctor_name'):
-            updates['suggested_doctor'] = args['doctor_name']
+        if args.get('animal_type'):
+            updates['animal_type'] = args['animal_type']
+        if args.get('service_type'):
+            updates['service_type'] = args['service_type']
+        if args.get('location'):
+            updates['location'] = args['location']
         if args.get('urgency'):
             updates['urgency_level'] = args['urgency']
         
@@ -249,27 +333,22 @@ Always use the generate_response tool to provide your final response and next ac
         if has_error:
             acknowledgment += "I'm having some technical difficulties, but I'd still like to help you. "
         
-        # State-specific clarification requests
+        # State-specific clarification requests for animal control
         if current_state == "GREETING":
-            clarification = "To get started with scheduling your appointment, could you please tell me your name and what type of appointment you need?"
-        elif current_state == "COLLECT_PATIENT_INFO":
-            # Check both extracted and standard keys for robustness
-            has_name = context.get('patient_name') or context.get('extracted_name')
-            has_contact = context.get('patient_contact') or context.get('extracted_email') or context.get('extracted_phone')
-            
-            if not has_name:
-                clarification = "Could you please tell me your full name so I can help you schedule an appointment?"
-            elif not has_contact:
-                clarification = "I have your name. Could you also provide your phone number or email address?"
-            else:
-                clarification = "I have your contact information. What type of appointment would you like to schedule?"
-        elif current_state == "COLLECT_APPOINTMENT_TYPE":
-            clarification = "What type of appointment are you looking for? For example, a general checkup, consultation, or something specific?"
-        elif current_state == "COLLECT_DOCTOR_PREFERENCE":
-            clarification = "Do you have a preferred doctor, or would you like me to suggest one based on your appointment type?"
-        elif current_state == "COLLECT_DATE_TIME":
-            clarification = "When would you prefer to schedule your appointment? You can mention a specific date, day of the week, or time preference."
+            clarification = "How can I assist you with animal control services today? I can help with reporting lost or found animals, emergency cases, pet surrenders, or providing general information."
+        elif current_state == "EMERGENCY_CASE":
+            clarification = "For emergency animal situations, could you please provide details about the animal and its location?"
+        elif current_state == "REPORT_FOUND":
+            clarification = "To report a found animal, could you please describe the animal and where you found it?"
+        elif current_state == "REPORT_LOST":
+            clarification = "I'm sorry to hear about your lost pet. Could you please describe your pet and where it was last seen?"
+        elif current_state == "PET_SURRENDER":
+            clarification = "For pet surrenders, could you tell me about the animal you're considering surrendering?"
+        elif current_state == "SCHEDULE_SURRENDER":
+            clarification = "When would be a convenient time for you to schedule the surrender?"
+        elif current_state == "GENERAL_INFO":
+            clarification = "What specific information about animal control services are you looking for?"
         else:
-            clarification = "Could you please provide more details so I can better assist you with your appointment?"
+            clarification = "Could you please provide more details so I can better assist you with your animal control needs?"
         
         return acknowledgment + clarification

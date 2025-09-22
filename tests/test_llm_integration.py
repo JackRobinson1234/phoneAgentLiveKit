@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agents.llm_health_agent import LLMHealthAgent
 from agents.llm_service import llm_service, tool_manager
-from agents.llm_nlp_processor import LLMNLPProcessor
 
 class TestLLMIntegration(unittest.TestCase):
     """Test cases for LLM integration"""
