@@ -714,9 +714,7 @@ Remember to use the generate_response tool for your final response.
             
             # If transitioning to a specific state, add auto-advance flag
             # This helps with skipping states when we have all required information
-            if next_action == 'transition':
-                # Add a flag to check for auto-advancement in the next state
-                normalized_updates[ContextField.AUTO_ADVANCE.value] = True
+           
         
         return result
     
