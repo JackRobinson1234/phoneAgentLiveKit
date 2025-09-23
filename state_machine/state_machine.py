@@ -105,6 +105,7 @@ class StateMachine:
         
         # Now check if the state exists in our state machine
         if next_state_name not in self.states:
+            print(f"⚠️ INVALID TRANSITION - State '{next_state_name}' does not exist")
             raise RuntimeError(f"Invalid transition to state: {next_state_name}")
         
         # Check if there's a transition message to log (but we won't use it)

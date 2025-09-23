@@ -32,7 +32,6 @@ Decision logic:
 - If user wants to report a found animal: transition to "REPORT_FOUND"
 - If user wants to report a lost animal: transition to "REPORT_LOST"
 - If user wants to surrender a pet: transition to "PET_SURRENDER"
-- If user needs general information: transition to "GENERAL_INFO"
 - If unclear: Ask clarifying questions without listing all services
 
 When generating direct responses (not transitions):
@@ -108,10 +107,11 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
             # Check if we have all required fields for pet surrender
             if all(field in context for field in self.service_required_fields['PET_SURRENDER']):
                 return "PET_SURRENDER"
-        elif service_type == 'info' or detected_intent == 'info':
-            # Check if we have all required fields for general info
-            if all(field in context for field in self.service_required_fields['GENERAL_INFO']):
-                return "GENERAL_INFO"
+        # Temporarily disabled GENERAL_INFO transitions
+        # elif service_type == 'info' or detected_intent == 'info':
+        #     # Check if we have all required fields for general info
+        #     if all(field in context for field in self.service_required_fields['GENERAL_INFO']):
+        #         return "GENERAL_INFO"
         
         # No auto-advance if we don't have enough information
         return None
@@ -128,7 +128,7 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
                     2: "REPORT_FOUND",
                     3: "REPORT_LOST",
                     4: "PET_SURRENDER",
-                    5: "GENERAL_INFO"
+                    # 5: "GENERAL_INFO"  # Temporarily disabled
                 }
                 return StateResult.TRANSITION, service_map[selection], updated_context
         except ValueError:
@@ -141,7 +141,7 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
         # Only transition for specific service requests, not for greetings or general info
         if detected_intent in ['greeting', 'info', 'other'] or not detected_intent:
             # Stay in the GREETING state for greetings and general messages
-            return StateResult.CONTINUE, None, updated_context
+            return StateResult.TRANSITION, "GENERAL_INFO", updated_context
             
         # Only transition for specific service types
         if service_type == 'emergency' or detected_intent == 'emergency':
@@ -163,9 +163,10 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
             return StateResult.TRANSITION, "REPORT_LOST", updated_context
         elif any(term in user_input_lower for term in ['surrender', 'give up', 'rehome']):
             return StateResult.TRANSITION, "PET_SURRENDER", updated_context
-        elif any(term in user_input_lower for term in ['information', 'services', 'hours', 'locations', 'adoption', 'licensing']):
-            # Only transition to GENERAL_INFO for specific information requests
-            return StateResult.TRANSITION, "GENERAL_INFO", updated_context
+        # Temporarily disabled GENERAL_INFO transitions
+        # elif any(term in user_input_lower for term in ['information', 'services', 'hours', 'locations', 'adoption', 'licensing']):
+        #     # Only transition to GENERAL_INFO for specific information requests
+        #     return StateResult.TRANSITION, "GENERAL_INFO", updated_context
         
         return result, next_state, updated_context
 
