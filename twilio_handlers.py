@@ -48,6 +48,28 @@ def register_twilio_routes(app):
                 user_input = request.values.get('SpeechResult', '')
                 logger.info(f"Received speech input: {user_input}")
                 
+                # Check for empty or very short input that might indicate recognition failure
+                if not user_input or len(user_input.strip()) < 2:
+                    # Handle speech recognition failure
+                    response.say("<speak><prosody rate='fast'>I didn't quite catch that. Could you please repeat?</prosody></speak>", voice='Polly.Matthew')
+                    
+                    # Add a new Gather to try again
+                    gather = Gather(
+                        input='speech dtmf',
+                        action='/webhook/voice',
+                        method='POST',
+                        speech_timeout='auto',
+                        enhanced=True,
+                        language='en-US',
+                        timeout=10,
+                        bargeIn=True,
+                        speechModel='phone_call',
+                        hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
+                    )
+                    gather.say("<speak><prosody rate='fast'>Please tell me how I can help you with animal control services.</prosody></speak>", voice='Polly.Matthew')
+                    response.append(gather)
+                    return str(response)
+                
                 # Process the input with our agent
                 agent_response = process_voice_input(caller_number, user_input)
                 
@@ -57,11 +79,16 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     speech_timeout='auto',
-                    enhanced='true',
+                    enhanced=True,
                     language='en-US',
-                    timeout=10
+                    timeout=10,
+                    bargeIn=True,  # Allow user to interrupt the voice
+                    speechModel='phone_call',  # Optimized for phone conversations
+                    profanityFilter=False,  # Allow natural speech including potential profanity
+                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
                 )
-                gather.say(agent_response)
+                # Add voice speed control with SSML
+                gather.say(f"<speak><prosody rate='fast'>{agent_response}</prosody></speak>", voice='Polly.Matthew')
                 response.append(gather)
                 
                 # Only if Gather times out (user doesn't say anything), this will execute
@@ -79,11 +106,16 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     speech_timeout='auto',
-                    enhanced='true',
+                    enhanced=True,
                     language='en-US',
-                    timeout=10
+                    timeout=10,
+                    bargeIn=True,  # Allow user to interrupt the voice
+                    speechModel='phone_call',  # Optimized for phone conversations
+                    profanityFilter=False,  # Allow natural speech including potential profanity
+                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
                 )
-                gather.say(greeting)
+                # Add voice speed control with SSML
+                gather.say(f"<speak><prosody rate='fast'>{greeting}</prosody></speak>", voice='Polly.Matthew')
                 response.append(gather)
                 
                 # Only if Gather times out (user doesn't say anything), this will execute
@@ -94,8 +126,26 @@ def register_twilio_routes(app):
         except Exception as e:
             logger.error(f"Error in voice webhook: {str(e)}")
             response = VoiceResponse()
-            response.say("I'm sorry, there was an error processing your request. Please try again later.")
-            response.hangup()
+            
+            # Create a more helpful error message with SSML for better voice quality
+            error_message = "<speak><prosody rate='fast'>I'm having trouble understanding that. Could you please try again or call back later if the problem continues?</prosody></speak>"
+            
+            # Add a Gather to allow the user to try again immediately
+            gather = Gather(
+                input='speech dtmf',
+                action='/webhook/voice',
+                method='POST',
+                speech_timeout='auto',
+                enhanced=True,
+                language='en-US',
+                timeout=10,
+                bargeIn=True,
+                speechModel='phone_call'
+            )
+            gather.say(error_message, voice='Polly.Matthew')
+            response.append(gather)
+            
+            # Only hang up if the user doesn't respond to the gather
             return str(response)
     
     @app.route('/webhook/sms', methods=['POST'])
