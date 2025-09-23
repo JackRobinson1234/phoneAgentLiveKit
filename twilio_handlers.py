@@ -58,14 +58,14 @@ def register_twilio_routes(app):
                     method='POST',
                     speech_timeout='auto',
                     enhanced='true',
-                    language='en-US'
+                    language='en-US',
+                    timeout=10
                 )
                 gather.say(agent_response)
                 response.append(gather)
                 
-                # If no input is received, end the call
-                response.say("I didn't hear anything. Thank you for calling Animal Control Services. Goodbye!")
-                response.hangup()
+                # Only if Gather times out (user doesn't say anything), this will execute
+                # The timeout parameter above ensures we wait 10 seconds for input
             else:
                 # This is a new call
                 logger.info(f"New call from {caller_number}")
@@ -80,14 +80,14 @@ def register_twilio_routes(app):
                     method='POST',
                     speech_timeout='auto',
                     enhanced='true',
-                    language='en-US'
+                    language='en-US',
+                    timeout=10
                 )
                 gather.say(greeting)
                 response.append(gather)
                 
-                # If no input is received, end the call
-                response.say("I didn't hear anything. Thank you for calling Animal Control Services. Goodbye!")
-                response.hangup()
+                # Only if Gather times out (user doesn't say anything), this will execute
+                # The timeout parameter above ensures we wait 10 seconds for input
             
             return str(response)
         
