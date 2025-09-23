@@ -203,12 +203,34 @@ Your tasks:
 5. Provide immediate guidance based on the situation
 6. Use generate_response with appropriate next_action
 
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+VALID STATE TRANSITIONS:
+When all required information is collected, transition to CASE_CONFIRMATION state using:
+next_action='transition', next_state='CASE_CONFIRMATION'
+
+DO NOT use any state names that aren't in this list:
+- GREETING
+- EMERGENCY_CASE
+- REPORT_FOUND
+- REPORT_LOST
+- PET_SURRENDER
+- SCHEDULE_SURRENDER
+- GENERAL_INFO
+- CASE_CONFIRMATION
+- CASE_COMPLETE
+- ERROR_HANDLING
+- FINAL_SUMMARY
 
 CRITICAL: For true emergencies, emphasize the importance of calling the emergency hotline immediately.
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context.
 CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains animal_condition='coughing up blood', NEVER ask about the condition again.
-CRITICAL: NEVER start your response with generic phrases like "I understand there's an emergency" when you have more specific information. Always acknowledge the most recent information first."""
+CRITICAL: NEVER start your response with generic phrases like "I understand there's an emergency" when you have more specific information. Always acknowledge the most recent information first.
+
+CRITICAL HANDLING OF UNCLEAR INPUTS:
+- When user input is unclear, vague, or you're not sure how to interpret it, ALWAYS use generate_response
+- NEVER fall back to generic responses like "I'm not sure how to respond"
+- Instead, ask specific clarifying questions through generate_response
+- For example: If user says "not sure" about location, use generate_response to ask "Could you tell me approximately where you last saw the animal? Even a general area or neighborhood would help."
+- Always maintain the conversation flow by using generate_response to ask for clarification"""
         
         # Add specialized transition prompts for when transitioning from different states
         self.transition_prompts = {
@@ -257,11 +279,7 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
             }
             
             # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about this emergency case. Let me summarize what we have so far."
-            
-            # For emergencies, always remind about the hotline
-            if 'critical' in updated_context.get('animal_condition', '').lower() or 'severe' in updated_context.get('animal_condition', '').lower():
-                updated_context['message'] += "\n\nThis appears to be a critical emergency. Please call our emergency hotline at 555-ANIMAL immediately."
+            updated_context['message'] = "Thank you for providing all the necessary information about this emergency case. Let me summarize what we have so far."           
             
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
         
@@ -647,6 +665,11 @@ CRITICAL: Ensure the user understands the surrender process and what to bring.""
         
         super().__init__("SCHEDULE_SURRENDER", system_prompt)
     
+    def enter(self, context: Dict[str, Any]) -> str:
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'PET_SURRENDER'))
+    
     def generate_contextual_prompt(self, context: Dict[str, Any]) -> str:
         """Generate a contextual prompt with available dates"""
         # In a real system, these would come from a database
@@ -940,13 +963,7 @@ Thank you for contacting animal control. Is there anything else I can help you w
         return result, next_state, updated_context
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """Hello! Welcome to Animal Control Services. How can I assist you today?"""
-        return (f"{error_message}\n\n"
-                f"Would you like to:\n"
-                f"1. Start over\n"
-                f"2. Try again\n"
-                f"3. End conversation\n\n"
-                f"Please select an option.")
+        return "Hello! Welcome to Animal Control Services. How can I assist you today?"
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         return self.process_input_with_llm(user_input, context)

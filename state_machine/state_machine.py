@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 from .animal_control_state import AnimalControlState, StateResult
+from .state_enum import StateEnum
 
 class StateMachine:
     """State machine engine for managing conversation flow"""
@@ -79,8 +80,44 @@ class StateMachine:
     
     def _handle_state_transition(self, next_state_name: str) -> str:
         """Handle state transition with a two-phase approach"""
+        # Validate the state transition using the StateEnum
+        if not StateEnum.is_valid_state(next_state_name):
+            # If the requested state doesn't exist, log a warning and use CASE_CONFIRMATION as fallback
+            print(f"⚠️ SYSTEM: WARNING - Attempted transition to non-existent state '{next_state_name}'")
+            print(f"⚠️ SYSTEM: Using CASE_CONFIRMATION as fallback state")
+            next_state_name = StateEnum.CASE_CONFIRMATION.value
+        
+        # Validate that this is a valid transition from the current state
+        current_state_name = self.current_state.name
+        valid_next_states = StateEnum.get_next_state_options(current_state_name)
+        
+        if next_state_name not in valid_next_states:
+            print(f"⚠️ SYSTEM: WARNING - Invalid transition from '{current_state_name}' to '{next_state_name}'")
+            print(f"⚠️ SYSTEM: Valid transitions are: {valid_next_states}")
+            # Use the first valid transition as fallback
+            if valid_next_states:
+                next_state_name = valid_next_states[0]
+                print(f"⚠️ SYSTEM: Using '{next_state_name}' as fallback state")
+            else:
+                # If no valid transitions, use CASE_CONFIRMATION as ultimate fallback
+                next_state_name = StateEnum.CASE_CONFIRMATION.value
+                print(f"⚠️ SYSTEM: Using '{next_state_name}' as ultimate fallback state")
+        
+        # Now check if the state exists in our state machine
         if next_state_name not in self.states:
             raise RuntimeError(f"Invalid transition to state: {next_state_name}")
+        
+        # Check if there's a transition message to log (but we won't use it)
+        transition_message = self.context.get('transition_message')
+        if transition_message:
+            print(f"🔄 SYSTEM: STATE TRANSITION - Transition message provided but will use enter state output instead")
+            # Store the transition message in context for reference, but we won't display it
+            self.context['previous_transition_message'] = transition_message
+            # Clear the transition message to ensure it's not used
+            if 'transition_message' in self.context:
+                del self.context['transition_message']
+        else:
+            print(f"🔄 SYSTEM: STATE TRANSITION - No transition message provided")
         
         print(f"🔄 SYSTEM: STATE TRANSITION - Exiting '{self.current_state.name}' → Entering '{next_state_name}'")
         
@@ -92,7 +129,7 @@ class StateMachine:
         previous_state = self.current_state
         self.current_state = self.states[next_state_name]
         
-        # Phase 2: Process in the new state with the updated context
+        # Always process the state entry to generate a response
         # This is the second LLM call that generates a response in the new state context
         response = self.current_state.process_state_entry(self.context, previous_state.name)
         

@@ -291,7 +291,7 @@ class LLMToolManager:
                 "properties": {
                     "response": {
                         "type": "string",
-                        "description": "The response message to send to the user"
+                        "description": "The response message to send to the user. IMPORTANT: For state transitions (when next_action='transition'), this field is optional and will be ignored. The next state's enter method will generate the response instead."
                     },
                     "next_action": {
                         "type": "string",
@@ -300,14 +300,16 @@ class LLMToolManager:
                     },
                     "next_state": {
                         "type": "string",
-                        "description": "Recommended next state if transitioning"
+                        "enum": ["GREETING", "EMERGENCY_CASE", "REPORT_FOUND", "REPORT_LOST", "PET_SURRENDER", "SCHEDULE_SURRENDER", "GENERAL_INFO", "CASE_CONFIRMATION", "CASE_COMPLETE", "ERROR_HANDLING", "FINAL_SUMMARY"],
+                        "description": "Recommended next state if transitioning. Required when next_action='transition'. Must be one of the valid states in the system."
                     },
                     "context_updates": {
                         "type": "object",
                         "description": "Updates to add to conversation context"
                     }
                 },
-                "required": ["response", "next_action"]
+                "required": ["next_action"]
+                # Removed allOf, if/then conditions that aren't supported by OpenRouter
             }
         )
     
