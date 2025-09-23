@@ -747,7 +747,8 @@ Remember to use the generate_response tool for your final response.
                 time_str = updates['parsed_time']
                 datetime_str = f"{date_str} {time_str}"
                 parsed_datetime = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
-                updates[ContextField.SELECTED_DATE.value] = parsed_datetime
+                # Store as ISO format string instead of datetime object for JSON serialization
+                updates[ContextField.SELECTED_DATE.value] = parsed_datetime.isoformat()
                 appointment_datetime = parsed_datetime
             except ValueError:
                 pass

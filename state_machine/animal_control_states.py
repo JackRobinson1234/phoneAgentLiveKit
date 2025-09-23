@@ -745,7 +745,26 @@ CRITICAL: Ensure the user understands the surrender process and what to bring.""
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
         
-        # Handle date selection
+        # Check for appointment confirmation (yes/no responses)
+        user_input_lower = user_input.lower().strip()
+        if context.get(ContextField.SELECTED_DATE.value) and any(word in user_input_lower for word in ['yes', 'yeah', 'sure', 'ok', 'okay', 'confirm', 'works', 'good']):
+            # User confirmed the appointment time
+            if 'case_details' not in updated_context:
+                updated_context['case_details'] = {}
+            
+            # Make sure we have the appointment date in case_details
+            if isinstance(context.get(ContextField.SELECTED_DATE.value), str):
+                # If it's already a string (ISO format), use it directly
+                appointment_date = context.get(ContextField.SELECTED_DATE.value)
+                updated_context['case_details']['appointment_date'] = appointment_date
+            else:
+                # Fallback in case it's not a string
+                updated_context['case_details']['appointment_date'] = 'Confirmed appointment'
+            
+            # Transition to case confirmation
+            return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
+        
+        # Handle numeric date selection
         try:
             selection = int(user_input.strip())
             if 1 <= selection <= 3:
