@@ -67,13 +67,14 @@ class LLMAnimalControlAgent:
         # Generate session ID
         self.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Start state machine
-        initial_message = self.state_machine.start_conversation()
+        # Create a concise greeting message
+        greeting = "Hello! I'm here to help with animal control services. How can I assist you today?"
         
-        # Add LLM status indicator
-        initial_message += "\n\n🤖 *Enhanced with AI-powered understanding*"
+        # Start state machine (but don't use its initial message)
+        self.state_machine.start_conversation()
         
-        return initial_message
+        # Return the standardized greeting
+        return greeting
     
     def process_message(self, user_input: str) -> str:
         """
