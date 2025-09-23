@@ -16,7 +16,7 @@ This guide explains how to deploy the Animal Control API to Railway for use with
 Ensure your repository includes these files (already created):
 - `Procfile` - Tells Railway how to run your app
 - `runtime.txt` - Specifies Python version
-- `requirements_railway.txt` - Lists dependencies
+- `requirements.txt` - Lists all dependencies
 - `.env.example` - Template for environment variables
 
 ### 2. Deploy to Railway
