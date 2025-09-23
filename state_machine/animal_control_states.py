@@ -203,6 +203,38 @@ Your tasks:
 5. Provide immediate guidance based on the situation
 6. Use generate_response with appropriate next_action
 
+FIELD CATEGORIZATION GUIDELINES:
+When users provide ambiguous information, categorize it according to these rules:
+
+- ANIMAL_TYPE: The species or category of animal (dog, cat, bird, etc.)
+  Example: "It's a German Shepherd" → animal_type="dog", animal_breed="German Shepherd"
+  Example: "There's a hawk with a broken wing" → animal_type="bird", animal_condition="broken wing"
+
+- ANIMAL_CONDITION: Physical state, injuries, or health concerns
+  Example: "It's bleeding from its leg" → animal_condition="bleeding leg"
+  Example: "The dog seems to be choking" → animal_condition="choking"
+  Example: "It looks like it was hit by a car" → animal_condition="possible vehicle injury"
+
+- LOCATION: Where the animal is currently located
+  Example: "It's in my backyard" → location="caller's backyard"
+  Example: "Corner of Main St and Oak Ave" → location="Main St and Oak Ave"
+
+- ANIMAL_CONTAINED: Whether the animal is secured, contained, or free to move
+  Example: "I've got it in my garage" → animal_contained=True
+  Example: "It's running loose in the park" → animal_contained=False
+  Example: "We put it in a box" → animal_contained=True
+
+When a response could fit multiple categories, prioritize as follows:
+1. If it describes the species, update animal_type
+2. If it describes injuries or condition, update animal_condition
+3. If it describes where the animal is, update location
+4. If it describes containment status, update animal_contained
+
+Example of ambiguous response: "There's an injured cat in my yard but it keeps running away"
+- Primary categorization: animal_type="cat"
+- Secondary categorization: animal_condition="injured"
+- Additional categorization: location="caller's yard", animal_contained=False
+
 VALID STATE TRANSITIONS:
 When all required information is collected, transition to CASE_CONFIRMATION state using:
 next_action='transition', next_state='CASE_CONFIRMATION'
@@ -586,6 +618,31 @@ Your tasks:
 
 5. Use generate_response with appropriate next_action
 
+FIELD CATEGORIZATION GUIDELINES:
+When users provide ambiguous information, categorize it according to these rules:
+
+- SURRENDER_REASON: Information about WHY they're giving up the pet (moving, allergies, can't afford, landlord issues, no time)
+  Example: "I'm moving to an apartment that doesn't allow pets" → surrender_reason
+  Example: "My landlord doesn't allow dogs" → surrender_reason
+
+- HEALTH_ISSUES: Physical health problems or medical conditions
+  Example: "The dog has arthritis" → health_issues
+  Example: "She needs special food for her kidney disease" → health_issues
+
+- BEHAVIORAL_ISSUES: Behavior problems, temperament issues, or training concerns
+  Example: "The dog bites people" → behavioral_issues
+  Example: "She's not good with children" → behavioral_issues
+  Example: "He's aggressive toward other dogs" → behavioral_issues
+
+When a response could fit multiple categories, prioritize as follows:
+1. If it describes WHY they're surrendering, use surrender_reason
+2. If it describes behavior problems, use behavioral_issues
+3. If it describes medical conditions, use health_issues
+
+Example of ambiguous response: "I can't keep him because he bites"
+- Primary categorization: surrender_reason="dog bites"
+- Secondary categorization: behavioral_issues="biting behavior"
+
 CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
 
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
@@ -733,16 +790,9 @@ CRITICAL: Be informative and helpful, directing users to specific services when 
         super().__init__("GENERAL_INFO", system_prompt)
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """I can provide information about our animal control services, including:
-
-- Animal adoption process
-- Pet licensing requirements
-- Wildlife management
-- Spay/neuter programs
-- Animal noise or nuisance complaints
-- Volunteer opportunities
-
-What specific information are you looking for today?"""
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -780,71 +830,10 @@ CRITICAL: Ensure all necessary information has been collected and provide clear 
         super().__init__("CASE_CONFIRMATION", system_prompt)
     
     def enter(self, context: Dict[str, Any]) -> str:
-        case_details = context.get('case_details', {})
-        case_type = case_details.get('type', 'unknown')
-        
-        if case_type == 'emergency':
-            summary = f"""Thank you for reporting this emergency case. Here's what I've recorded:
-
-- Animal type: {case_details.get('animal_type', 'Unknown')}
-- Condition: {case_details.get('condition', 'Unknown')}
-- Location: {case_details.get('location', 'Unknown')}
-- Contained/Secured: {case_details.get('contained', 'Unknown')}
-
-For immediate assistance, please call our emergency hotline at 555-ANIMAL.
-An animal control officer will be dispatched to the location as soon as possible.
-
-Is this information correct? If not, please let me know what needs to be changed."""
-
-        elif case_type == 'found':
-            summary = f"""Thank you for reporting this found animal. Here's what I've recorded:
-
-- Animal type: {case_details.get('animal_type', 'Unknown')}
-- Description: {case_details.get('description', 'Unknown')}
-- Location found: {case_details.get('location_found', 'Unknown')}
-- When found: {case_details.get('found_time', 'Unknown')}
-- Identifying features: {case_details.get('identifying_features', 'None reported')}
-- Can keep temporarily: {'Yes' if case_details.get('finder_can_keep') else 'No'}
-
-We'll check our lost pet reports for potential matches. An officer will contact you within 24 hours.
-
-Is this information correct? If not, please let me know what needs to be changed."""
-
-        elif case_type == 'lost':
-            summary = f"""I'm sorry about your lost pet. Here's what I've recorded:
-
-- Animal type: {case_details.get('animal_type', 'Unknown')}
-- Name: {case_details.get('animal_name', 'Unknown')}
-- Description: {case_details.get('description', 'Unknown')}
-- Last seen location: {case_details.get('last_seen_location', 'Unknown')}
-- Last seen time: {case_details.get('last_seen_time', 'Unknown')}
-- Identifying features: {case_details.get('identifying_features', 'None reported')}
-- Owner: {case_details.get('owner_name', 'Unknown')}
-- Contact: {case_details.get('owner_contact', 'Unknown')}
-
-We'll check our found animal reports and alert our field officers. We'll contact you if we find a match.
-
-Is this information correct? If not, please let me know what needs to be changed."""
-
-        elif case_type == 'surrender':
-            summary = f"""Thank you for providing information about your pet surrender. Here's what I've recorded:
-
-- Animal type: {case_details.get('animal_type', 'Unknown')}
-- Name: {case_details.get('animal_name', 'Unknown')}
-- Age: {case_details.get('animal_age', 'Unknown')}
-- Reason for surrender: {case_details.get('surrender_reason', 'Unknown')}
-- Medical issues: {case_details.get('medical_issues', 'None reported')}
-- Behavioral issues: {case_details.get('behavioral_issues', 'None reported')}
-- Owner: {case_details.get('owner_name', 'Unknown')}
-- Contact: {case_details.get('owner_contact', 'Unknown')}
-- Appointment: {case_details.get('appointment_date', 'Not scheduled yet')}
-
-Is this information correct? If not, please let me know what needs to be changed."""
-
-        else:
-            summary = """Thank you for providing this information. Please confirm that the details are correct, or let me know what needs to be changed."""
-            
-        return summary
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
+ 
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -964,9 +953,6 @@ Thank you for contacting animal control. Is there anything else I can help you w
     
     def enter(self, context: Dict[str, Any]) -> str:
         return "Hello! Welcome to Animal Control Services. How can I assist you today?"
-    
-    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
-        return self.process_input_with_llm(user_input, context)
 
 
 class LLMFinalSummaryState(AnimalControlState):

@@ -196,13 +196,13 @@ class LLMToolManager:
         # Tool for updating conversation context
         self.register_tool(
             "update_context",
-            "Update conversation context with extracted information from user input",
+            "Update conversation context with extracted information from user input. ALWAYS update the context with the currently expected field, even for negative or uncertain responses:\n\n1. For negative responses: If user says 'no', 'none', 'doesn't have any', etc., update with appropriate negative values:\n   - For health_issues: 'none reported' or 'no health issues'\n   - For behavioral_issues: 'none reported' or 'no behavioral issues'\n   - For animal_contained: False\n\n2. For uncertain responses: If user says 'not sure', 'I don't know', 'maybe', etc., update with:\n   - 'unknown' or 'not specified' for most fields\n   - For boolean fields like animal_contained, use 'unknown'\n\n3. For ambiguous information: Prioritize updating the field that is currently being collected. For example, if the current missing field is 'surrender_reason' and the user says 'he bites', categorize this as surrender_reason='dog bites' rather than behavioral_issues='biting'. Similarly, if collecting 'animal_condition' and user says 'hit by car', update animal_condition rather than creating a new field.\n\nALWAYS try to match information to the expected field being collected first, before creating new fields. NEVER leave the context unchanged - always update with an appropriate value even for negative or uncertain responses.",
             {
                 "type": "object",
                 "properties": {
                     "context_updates": {
                         "type": "object",
-                        "description": "Key-value pairs to update in the conversation context",
+                        "description": "Key-value pairs to update in the conversation context. ALWAYS update the context with a value for the currently expected field, even for negative or uncertain responses. For negative responses (no, none, doesn't have any), use values like 'none reported', 'no issues', or False for boolean fields. For uncertain responses (not sure, don't know), use 'unknown' or 'not specified'. When possible, categorize information based on the current field being collected.",
                         "additionalProperties": True
                     }
                 },

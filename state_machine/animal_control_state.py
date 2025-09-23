@@ -113,11 +113,9 @@ CRITICAL INSTRUCTIONS:
         # Fallback to the standard enter method if the specialized approach fails
         return self.enter(context)
     
-    @abstractmethod
     def enter(self, context: Dict[str, Any]) -> str:
         """
         Enter this state and generate an initial response.
-        This is an abstract method that must be implemented by all subclasses.
         
         Args:
             context: Current conversation context
@@ -125,7 +123,9 @@ CRITICAL INSTRUCTIONS:
         Returns:
             The message to display to the user.
         """
-        pass
+        # Default implementation: return a generic message
+        # Subclasses should override this for better responses
+        return f"You are now in the {self.name} state." + self.generate_contextual_prompt(context)
         
     def _create_state_entry_prompt(self, context: Dict[str, Any], previous_state: str) -> str:
         """Create a specialized prompt for entering this state from another state"""
@@ -740,6 +740,7 @@ Remember to use the generate_response tool for your final response.
                 updates[context_field] = args[arg_name]
         
         # If we have both date and time, try to create a datetime object
+        appointment_datetime = None
         if 'parsed_date' in updates and 'parsed_time' in updates:
             try:
                 date_str = updates['parsed_date']
@@ -747,10 +748,31 @@ Remember to use the generate_response tool for your final response.
                 datetime_str = f"{date_str} {time_str}"
                 parsed_datetime = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
                 updates[ContextField.SELECTED_DATE.value] = parsed_datetime
+                appointment_datetime = parsed_datetime
             except ValueError:
                 pass
         
-        return {'context_updates': updates}
+        # Generate a response message based on the parsed date/time
+        response_message = ""
+        if appointment_datetime:
+            # Format the date nicely for the response
+            formatted_date = appointment_datetime.strftime("%A, %B %d at %I:%M %p")
+            response_message = f"I've scheduled your appointment for {formatted_date}. Does this time work for you?"
+        elif 'parsed_date' in updates:
+            # We have a date but no valid time
+            response_message = f"I've noted the date {updates['parsed_date']}. What time would work best for you?"
+        elif 'parsed_time' in updates:
+            # We have a time but no valid date
+            response_message = f"I've noted the time {updates['parsed_time']}. What date would you prefer?"
+        else:
+            # We couldn't parse a valid date or time
+            response_message = "I couldn't quite understand that date/time. Could you please provide a specific date and time for your appointment?"
+        
+        return {
+            'context_updates': updates,
+            'response': response_message,
+            'next_action': 'continue'
+        }
     
     def _handle_response_generation(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle response generation"""
