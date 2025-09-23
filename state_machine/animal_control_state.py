@@ -6,6 +6,7 @@ import json
 
 from agents.llm_service import llm_service, tool_manager
 from .context_fields import ContextField
+from settings import AVAILABLE_MODELS, LLM_CONFIG
 
 class StateResult(Enum):
     """Possible results from state execution"""

@@ -15,6 +15,7 @@ from flask_cors import CORS
 
 from agents.llm_animal_control_agent import LLMAnimalControlAgent
 from config import API_HOST, API_PORT, DEBUG_MODE
+from twilio_handlers import register_twilio_routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,9 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Register Twilio webhook routes
+register_twilio_routes(app)
 
 # Store active conversations in memory (in production, use Redis/database)
 active_conversations: Dict[str, LLMAnimalControlAgent] = {}

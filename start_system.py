@@ -37,8 +37,27 @@ class ConsoleChatClient:
         """Start a new conversation with the API"""
         try:
             response = requests.post(f"{API_BASE_URL}/conversations")
-            data = response.json()
             
+            # Check if the request was successful
+            if response.status_code != 200:
+                print(f"\nError: API returned status code {response.status_code}")
+                print(f"Response: {response.text}\n")
+                return False
+                
+            # Parse the JSON response
+            try:
+                data = response.json()
+            except Exception as json_error:
+                print(f"\nError parsing JSON response: {json_error}")
+                print(f"Raw response: {response.text}\n")
+                return False
+            
+            # Check if conversation_id is in the response
+            if 'conversation_id' not in data:
+                print("\nError: API response missing conversation_id")
+                print(f"Response data: {data}\n")
+                return False
+                
             # Store conversation ID
             self.conversation_id = data['conversation_id']
             
@@ -50,6 +69,10 @@ class ConsoleChatClient:
                 print("\nAgent: Hello! I'm here to help with animal control services. How can I assist you today?\n")
                 
             return True
+        except requests.exceptions.ConnectionError:
+            print("\nError: Could not connect to the API server")
+            print(f"Make sure the API server is running at {API_BASE_URL}\n")
+            return False
         except Exception as e:
             print(f"\nError starting conversation: {e}")
             print("Make sure the API server is running.\n")
@@ -62,11 +85,32 @@ class ConsoleChatClient:
             return False
             
         try:
+            # Send the message to the API
             response = requests.post(
                 f"{API_BASE_URL}/conversations/{self.conversation_id}/messages",
                 json={'message': message}
             )
-            data = response.json()
+            
+            # Check if the request was successful
+            if response.status_code != 200:
+                print(f"\nError: API returned status code {response.status_code}")
+                print(f"Response: {response.text}\n")
+                
+                # If the conversation doesn't exist anymore, reset the conversation ID
+                if response.status_code == 404:
+                    print("Conversation not found. Starting a new conversation...")
+                    self.conversation_id = None
+                    return self.start_conversation()
+                    
+                return False
+                
+            # Parse the JSON response
+            try:
+                data = response.json()
+            except Exception as json_error:
+                print(f"\nError parsing JSON response: {json_error}")
+                print(f"Raw response: {response.text}\n")
+                return False
             
             # Display agent's response
             agent_response = data.get('message', '')
@@ -76,6 +120,11 @@ class ConsoleChatClient:
                 print("\nAgent: I'm sorry, I didn't understand that. Could you please rephrase?\n")
                 
             return True
+            
+        except requests.exceptions.ConnectionError:
+            print("\nError: Could not connect to the API server")
+            print(f"Make sure the API server is running at {API_BASE_URL}\n")
+            return False
         except Exception as e:
             print(f"\nError sending message: {e}")
             return False
@@ -83,19 +132,53 @@ class ConsoleChatClient:
     def end_conversation(self):
         """End the conversation"""
         if not self.conversation_id:
-            return
+            print("\nNo active conversation to end.\n")
+            return True
             
         try:
+            # Send the delete request to end the conversation
             response = requests.delete(f"{API_BASE_URL}/conversations/{self.conversation_id}")
-            data = response.json()
+            
+            # Check if the request was successful
+            if response.status_code != 200:
+                # If 404, the conversation doesn't exist anymore, which is fine
+                if response.status_code == 404:
+                    print("\nConversation already ended or not found.\n")
+                    self.conversation_id = None
+                    return True
+                    
+                print(f"\nError: API returned status code {response.status_code}")
+                print(f"Response: {response.text}\n")
+                return False
+                
+            # Parse the JSON response
+            try:
+                data = response.json()
+            except Exception as json_error:
+                print(f"\nError parsing JSON response: {json_error}")
+                print(f"Raw response: {response.text}\n")
+                # Still consider the conversation ended
+                self.conversation_id = None
+                return True
             
             # Display end message
             end_message = data.get('message', 'Thank you for using Animal Control Services. Goodbye!')
             print(f"\nAgent: {end_message}\n")
             
             self.conversation_id = None
+            return True
+            
+        except requests.exceptions.ConnectionError:
+            print("\nError: Could not connect to the API server")
+            print(f"Make sure the API server is running at {API_BASE_URL}\n")
+            # Still consider the conversation ended locally
+            self.conversation_id = None
+            return True
         except Exception as e:
             print(f"\nError ending conversation: {e}")
+            # Still consider the conversation ended locally
+            self.conversation_id = None
+            return True
     
     def run_chat_loop(self):
         """Run the main chat loop"""
@@ -103,8 +186,25 @@ class ConsoleChatClient:
         print("Type 'exit', 'quit', or 'bye' to end the conversation")
         print("Starting conversation...")
         
-        if not self.start_conversation():
-            return
+        # Try to start a conversation
+        start_attempts = 0
+        max_attempts = 3
+        
+        while start_attempts < max_attempts:
+            if self.start_conversation():
+                break
+            
+            start_attempts += 1
+            if start_attempts < max_attempts:
+                print(f"Retrying... (Attempt {start_attempts + 1}/{max_attempts})")
+                time.sleep(2)  # Wait before retrying
+        
+        # If we couldn't start a conversation after max attempts, ask if user wants to continue
+        if start_attempts >= max_attempts:
+            print("\nCould not start a conversation after multiple attempts.")
+            response = input("Do you want to continue without a conversation? (y/n): ").lower()
+            if response != 'y' and response != 'yes':
+                return
         
         self.running = True
         
@@ -119,12 +219,24 @@ class ConsoleChatClient:
                     self.running = False
                     break
                 
+                # Check for restart command
+                if user_input.lower() in ['restart', 'reset']:
+                    print("Restarting conversation...")
+                    self.end_conversation()
+                    if not self.start_conversation():
+                        print("Failed to restart conversation. Please try again.")
+                    continue
+                
                 # Skip empty inputs
                 if not user_input:
                     continue
                 
                 # Send message to API
-                self.send_message(user_input)
+                if not self.send_message(user_input):
+                    # If sending failed and we don't have a conversation ID, try to start a new one
+                    if not self.conversation_id:
+                        print("Trying to start a new conversation...")
+                        self.start_conversation()
                 
             except KeyboardInterrupt:
                 print("\nInterrupted by user. Ending conversation...")
@@ -133,8 +245,11 @@ class ConsoleChatClient:
                 break
             except Exception as e:
                 print(f"\nError in chat loop: {e}")
-                self.running = False
-                break
+                print("Trying to recover...")
+                # Don't exit, just try to continue
+                if not self.conversation_id:
+                    print("Trying to start a new conversation...")
+                    self.start_conversation()
 
 def is_port_in_use(port):
     """Check if a port is in use"""
