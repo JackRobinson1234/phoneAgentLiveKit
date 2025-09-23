@@ -35,7 +35,7 @@ NLP_CONFIG = {
 LLM_CONFIG = {
     'provider': 'openrouter',
     'api_base_url': 'https://openrouter.ai/api/v1',
-    'model': 'anthropic/claude-3.5-sonnet',  # Default model
+    'model': 'google/gemini-2.5-flash',  # Default model
     'temperature': 0.7,
     'max_tokens': 1000,
     'timeout': 30,
