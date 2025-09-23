@@ -68,16 +68,7 @@ class OpenRouterService:
         except Exception as e:
             print(f"Connection test failed: {e}")
             return False
-    
-    @identify_llm_executor(
-        model_param="model",
-        context_param="messages",
-        temperature_param="temperature",
-        max_tokens_param="max_tokens",
-        tools_param="tools",
-        output_text="content",
-        output_usage="usage"
-    )
+
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
