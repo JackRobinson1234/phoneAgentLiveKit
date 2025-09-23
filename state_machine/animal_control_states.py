@@ -184,6 +184,8 @@ Your tasks:
    - For example, if user just told you the location, start with "Thank you for letting me know the animal is at [location]."
    - If they just provided condition information, acknowledge that: "I understand the [animal_type] is [condition]."
    - Only after acknowledging recent information, ask for the next piece of information
+   - DO NOT include any step indicators or progress information in your responses
+   - For emergency cases, always include the emergency hotline number (555-ANIMAL) in your responses
 
 5. Provide immediate guidance based on the situation
 6. Use generate_response with appropriate next_action
@@ -259,30 +261,6 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
         return [field for field in self.required_fields if not context.get(field)]
-    
-    def _get_prompt_for_field(self, field: str, context: Dict[str, Any]) -> str:
-        """Get the appropriate prompt for the next required field"""
-        prompts = {
-            'animal_type': "What type of animal is involved in this emergency?",
-            'animal_condition': "What is the animal's condition or situation? (injured, sick, abused, etc.)",
-            'location': "Where is the animal located? Please provide an address or landmarks.",
-            'animal_contained': "Is the animal contained/secured or is it loose?"
-        }
-        
-        # Acknowledge information already provided
-        acknowledgment = ""
-        if context.get('animal_type'):
-            acknowledgment += f"I understand this emergency involves a {context.get('animal_type')}. "
-        if context.get('animal_condition'):
-            acknowledgment += f"The animal is {context.get('animal_condition')}. "
-        
-        # Add emergency hotline reminder for all prompts
-        emergency_note = "\n\nFor immediate assistance with critically injured animals, please call our emergency hotline at 555-ANIMAL."
-        
-        if acknowledgment:
-            return f"{acknowledgment}\n\n{prompts[field]}{emergency_note}"
-        else:
-            return f"{prompts[field]}{emergency_note}"
             
     def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
         """Determine the next state based on context information"""
@@ -320,6 +298,7 @@ Your tasks:
    - For example, if user just told you the location, start with "Thank you for letting me know the animal was found at [location]."
    - If they just provided breed and color information, acknowledge that: "I've noted that you found a [color] [breed]."
    - Only after acknowledging recent information, ask for the next piece of information
+   - DO NOT include any step indicators or progress information in your responses
 
 5. Use generate_response with appropriate next_action
 
@@ -331,7 +310,7 @@ CRITICAL: NEVER ask for information that's already been provided. For example, i
 
 CRITICAL: NEVER start your response with generic phrases like "I understand you found a dog" when you have more specific information. Always acknowledge the most recent information first."""
         
-        # Add specialized transition prompts for when transitioning from different states
+        # Add specialized transition prompt for when transitioning from GREETING to REPORT_FOUND
         self.transition_prompts = {
             "GREETING": """You are now helping a user who has just indicated they've found an animal.
             
@@ -449,6 +428,8 @@ Your tasks:
    - For example, if user just told you the location, start with "Thank you for letting me know your pet was last seen at [location]."
    - If they just provided breed and color information, acknowledge that: "I've noted that your [animal_type] is a [color] [breed]."
    - Only after acknowledging recent information, ask for the next piece of information
+   - DO NOT include any step indicators or progress information in your responses
+   - Be empathetic since this is about a lost pet
 
 5. Use generate_response with appropriate next_action
 
@@ -459,20 +440,6 @@ CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your r
 CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains animal_color='green', NEVER ask about the color again.
 
 CRITICAL: NEVER start your response with generic phrases like "I understand you're looking for your dog" when you have more specific information. Always acknowledge the most recent information first."""
-        
-        # Add specialized transition prompt for when transitioning from GREETING to REPORT_LOST
-        self.transition_prompts = {
-            "GREETING": """You are now helping a user who has just indicated they've lost a pet.
-            
-When responding to the user:
-1. Express empathy about their lost pet
-2. Acknowledge any information they've already shared (pet name, type, etc.)
-3. Explain briefly that you'll help them create a lost pet report
-4. Begin gathering missing information in a conversational way
-5. Don't ask for information they've already provided
-
-Your tone should be supportive and reassuring while efficiently collecting the needed information."""
-        }
         
         super().__init__("REPORT_LOST", system_prompt)
         self.required_fields = [
@@ -528,13 +495,8 @@ Your tone should be supportive and reassuring while efficiently collecting the n
             # This allows for more natural conversation flow
             return result, next_state, updated_context
         
-        # Otherwise, ask for the next piece of information
-        next_field = missing_fields[0]
-        prompt_message = self._get_prompt_for_field(next_field, updated_context)
-        
-        # Only override the message if the LLM didn't provide a good follow-up question
-        if not updated_context.get('message') or 'thank you' in updated_context.get('message', '').lower():
-            updated_context['message'] = prompt_message
+        # Otherwise, use the LLM-generated response
+        # The message should already be set by process_input_with_llm
         
         return StateResult.CONTINUE, None, updated_context
     
@@ -558,38 +520,7 @@ Your tone should be supportive and reassuring while efficiently collecting the n
         """Determine which required fields are still missing"""
         return [field for field in self.required_fields if not context.get(field)]
     
-    def _get_prompt_for_field(self, field: str, context: Dict[str, Any]) -> str:
-        """Get the appropriate prompt for the next required field"""
-        prompts = {
-            'animal_type': "What type of animal have you lost (dog, cat, bird, etc.)? Please include the breed and name if you know them.",
-            'animal_description': "Thank you. Now, could you describe your pet's color, size, and any distinctive markings?",
-            'last_seen_location': "Where and when was your pet last seen?",
-            'identifying_features': "Is your pet wearing a collar, tags, or are they microchipped? Any other identifying features?",
-            'owner_contact': "Finally, please provide your contact information (name and phone number) so we can reach you if your pet is found."
-        }
-        
-        # Add validation error message if needed
-        if field == 'owner_contact' and context.get('contact_validation_error'):
-            prompts['owner_contact'] = "I couldn't validate the contact information you provided. Please provide a valid phone number (10 digits) or email address."
-        
-        # Calculate progress
-        total_fields = len(self.required_fields)
-        completed_fields = total_fields - len(self._get_missing_fields(context))
-        progress_percent = int((completed_fields / total_fields) * 100)
-        progress_bar = f"[Progress: {progress_percent}% - Step {completed_fields + 1} of {total_fields}]"
-        
-        # Acknowledge information already provided
-        acknowledgment = ""
-        if context.get('animal_type'):
-            acknowledgment += f"I have that your lost pet is a {context.get('animal_type')}. "
-        if context.get('animal_name'):
-            acknowledgment += f"Their name is {context.get('animal_name')}. "
-        
-        # Combine progress bar with prompt
-        if acknowledgment:
-            return f"{progress_bar}\n\n{acknowledgment}\n\n{prompts[field]}"
-        else:
-            return f"{progress_bar}\n\n{prompts[field]}"
+    # Removed hardcoded _get_prompt_for_field method - now handled by LLM
 
 class LLMPetSurrenderState(AnimalControlState):
     """LLM-enhanced state for pet surrender scheduling with step-by-step information collection"""
@@ -600,21 +531,38 @@ class LLMPetSurrenderState(AnimalControlState):
 Current State: PET_SURRENDER - Collecting information for pet surrender
 
 Your tasks:
-1. Collect information ONE STEP AT A TIME in this order:
+1. Use update_context tool to extract ANY information provided by the user
+2. Collect information in this order, but ONLY ask for information that hasn't already been provided:
    a. Animal type (dog, cat, etc.), breed, age, and name
    b. Reason for surrender
    c. Medical or behavioral issues
    d. Owner contact information (name and phone number)
 
-2. For each step:
-   - Ask for ONLY the next missing piece of information
+3. For each interaction:
+   - FIRST check what information is already in the context
+   - Ask ONLY for the NEXT SINGLE missing piece of information
+   - NEVER ask for information that's already in the context
    - If user provides multiple pieces of information at once, acknowledge and extract all provided info
-   - Don't repeat questions for information already provided
    - Move to the next missing information
 
-3. Use generate_response with appropriate next_action
+4. When generating responses:
+   - ALWAYS acknowledge the MOST RECENTLY provided information first
+   - For example, if user just told you the reason, start with "Thank you for explaining why you need to surrender your pet."
+   - If they just provided health information, acknowledge that: "I understand your [animal_type] has [health_issue]."
+   - Only after acknowledging recent information, ask for the next piece of information
+   - DO NOT include any step indicators or progress information in your responses
+   - Be empathetic but professional about the pet surrender process
 
-CRITICAL: Be compassionate but informative about the surrender process.
+5. Use generate_response with appropriate next_action
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+
+CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
+
+CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains surrender_reason='moving', NEVER ask about the reason again.
+
+CRITICAL: NEVER start your response with generic phrases like "I understand you want to surrender your pet" when you have more specific information. Always acknowledge the most recent information first.
+
 CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
         
         super().__init__("PET_SURRENDER", system_prompt)
@@ -657,13 +605,8 @@ CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept mult
             
             return StateResult.TRANSITION, "SCHEDULE_SURRENDER", updated_context
         
-        # Otherwise, ask for the next piece of information
-        next_field = missing_fields[0]
-        prompt_message = self._get_prompt_for_field(next_field, updated_context)
-        
-        # Only override the message if the LLM didn't provide a good follow-up question
-        if not updated_context.get('message') or 'thank you' in updated_context.get('message', '').lower():
-            updated_context['message'] = prompt_message
+        # Otherwise, use the LLM-generated response
+        # The message should already be set by process_input_with_llm
         
         return StateResult.CONTINUE, None, updated_context
     
@@ -671,29 +614,7 @@ CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept mult
         """Determine which required fields are still missing"""
         return [field for field in self.required_fields if not context.get(field)]
     
-    def _get_prompt_for_field(self, field: str, context: Dict[str, Any]) -> str:
-        """Get the appropriate prompt for the next required field"""
-        prompts = {
-            'animal_type': "What type of animal are you surrendering (dog, cat, etc.)? Please include breed, age, and name if you know them.",
-            'surrender_reason': "I understand this can be difficult. Could you share the reason you need to surrender your pet?",
-            'health_issues': "Are there any medical or behavioral issues we should be aware of?",
-            'owner_contact': "Please provide your contact information (name and phone number) so we can reach you if needed."
-        }
-        
-        # Acknowledge information already provided
-        acknowledgment = ""
-        pet_type = context.get('animal_type', '')
-        if pet_type:
-            pet_name = context.get('animal_name', '')
-            if pet_name:
-                acknowledgment += f"I understand you're surrendering your {pet_type} named {pet_name}. "
-            else:
-                acknowledgment += f"I understand you're surrendering your {pet_type}. "
-        
-        if acknowledgment:
-            return f"{acknowledgment}\n\n{prompts[field]}"
-        else:
-            return prompts[field]
+    # Removed hardcoded _get_prompt_for_field method - now handled by LLM
 
 class LLMScheduleSurrenderState(AnimalControlState):
     """LLM-enhanced state for scheduling pet surrender appointments"""
