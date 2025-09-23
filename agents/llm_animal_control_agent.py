@@ -11,7 +11,6 @@ from state_machine.animal_control_states import (
     LLMCaseCompleteState, LLMErrorHandlingState, LLMFinalSummaryState
 )
 from .llm_service import llm_service
-from config.settings import AGENT_CONFIG
 
 class LLMAnimalControlAgent:
     """LLM-enhanced animal control agent orchestrator"""

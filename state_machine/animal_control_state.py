@@ -5,7 +5,6 @@ from datetime import datetime
 import json
 
 from agents.llm_service import llm_service, tool_manager
-from config.settings import AVAILABLE_MODELS
 from .context_fields import ContextField
 
 class StateResult(Enum):
@@ -711,11 +710,7 @@ Remember to use the generate_response tool for your final response.
         # Add next_state if provided
         if args.get('next_state'):
             result['next_state'] = args['next_state']
-            
-            # If transitioning to a specific state, add auto-advance flag
-            # This helps with skipping states when we have all required information
-           
-        
+
         return result
     
     # Removed hardcoded acknowledgment generation - now handled by LLM

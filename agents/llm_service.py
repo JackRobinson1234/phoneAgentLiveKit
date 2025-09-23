@@ -6,7 +6,7 @@ import openai
 from dotenv import load_dotenv
 from llm_eval import identify_llm_executor
 
-from config.settings import LLM_CONFIG, AVAILABLE_MODELS
+from settings import LLM_CONFIG, AVAILABLE_MODELS
 
 # Load environment variables
 load_dotenv()

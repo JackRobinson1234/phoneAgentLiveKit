@@ -12,7 +12,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from agents.llm_animal_control_agent import LLMAnimalControlAgent
-from config.settings import AGENT_CONFIG
+from settings import AGENT_CONFIG
 
 class AnimalControlAgentCLI:
     """Command-line interface for the Health Agent"""

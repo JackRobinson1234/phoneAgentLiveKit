@@ -55,7 +55,6 @@ class ContextField(Enum):
     
     # Metadata
     TIMESTAMP = "timestamp"
-    AUTO_ADVANCE = "auto_advance"
     NEXT_STATE = "next_state"
     ERROR_MESSAGE = "error_message"
     
