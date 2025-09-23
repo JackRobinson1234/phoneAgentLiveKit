@@ -14,6 +14,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from agents.llm_animal_control_agent import LLMAnimalControlAgent
+from config import API_HOST, API_PORT, DEBUG_MODE
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -280,6 +281,5 @@ def get_conversation_status(conversation_id):
         }), 500
 
 if __name__ == '__main__':
-    # Get port from environment variable or use 5001 as default
-    port = int(os.environ.get("PORT", 5001))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Use configuration variables
+    app.run(host=API_HOST, port=API_PORT, debug=DEBUG_MODE)

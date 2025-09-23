@@ -2,6 +2,7 @@
 """
 Animal Control Voice System Launcher
 Kills any existing API server processes and starts both the API server and voice agent
+Supports both local and Railway deployments
 """
 
 import os
@@ -11,11 +12,19 @@ import subprocess
 import time
 import socket
 
+# Import dotenv for environment variables
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 # Configuration
-API_PORT = 5001
+API_PORT = int(os.environ.get("PORT", 5001))
 API_SCRIPT = "animal_control_api.py"
 VOICE_SCRIPT = "api_voice_agent.py"
 API_STARTUP_WAIT = 3  # seconds to wait for API to fully initialize
+RAILWAY_URL = os.environ.get('RAILWAY_URL', '')
+USE_REMOTE_API = os.environ.get('USE_REMOTE_API', 'False').lower() == 'true'
 
 def is_port_in_use(port):
     """Check if a port is in use"""
@@ -111,23 +120,33 @@ def main():
     """Main function"""
     print("=== Animal Control Voice System Launcher ===")
     
-    # Kill any existing process using the API port
-    if is_port_in_use(API_PORT):
-        print(f"Port {API_PORT} is in use. Attempting to kill the process...")
-        if not find_and_kill_process_on_port(API_PORT):
-            print(f"Failed to kill process using port {API_PORT}")
-            print(f"Please manually kill the process and try again")
-            sys.exit(1)
+    api_process = None
     
-    # Start the API server
-    api_process = start_api_server()
+    # Check if we should use a remote API (Railway deployment)
+    if USE_REMOTE_API and RAILWAY_URL:
+        print(f"Using remote API at: {RAILWAY_URL}")
+    else:
+        # Kill any existing process using the API port
+        if is_port_in_use(API_PORT):
+            print(f"Port {API_PORT} is in use. Attempting to kill the process...")
+            if not find_and_kill_process_on_port(API_PORT):
+                print(f"Failed to kill process using port {API_PORT}")
+                print(f"Please manually kill the process and try again")
+                sys.exit(1)
+        
+        # Start the local API server
+        api_process = start_api_server()
     
     # Start the voice agent
     voice_process = start_voice_agent()
     
-    print("\nBoth API server and voice agent are now running.")
-    print("You can interact with the voice agent in this terminal.")
-    print("The API server is running in the background.")
+    if api_process:
+        print("\nBoth API server and voice agent are now running.")
+        print("You can interact with the voice agent in this terminal.")
+        print("The API server is running in the background.")
+    else:
+        print("\nVoice agent is now running, connected to the remote API.")
+        print("You can interact with the voice agent in this terminal.")
     
     try:
         # Wait for the voice agent to exit
@@ -135,35 +154,47 @@ def main():
         
         print("\nVoice agent has exited.")
         
-        # Ask if user wants to kill the API server too
-        response = input("Do you want to stop the API server too? (y/n): ").lower()
-        if response == 'y' or response == 'yes':
-            print("Stopping API server...")
-            api_process.terminate()
-            api_process.wait(timeout=5)
-            print("API server stopped.")
-        else:
-            print("API server continues to run in the background.")
+        # Only ask about stopping API if we started a local one
+        if api_process:
+            # Ask if user wants to kill the API server too
+            response = input("Do you want to stop the API server too? (y/n): ").lower()
+            if response == 'y' or response == 'yes':
+                print("Stopping API server...")
+                api_process.terminate()
+                api_process.wait(timeout=5)
+                print("API server stopped.")
+            else:
+                print("API server continues to run in the background.")
             
     except KeyboardInterrupt:
         print("\nReceived keyboard interrupt. Shutting down...")
         
-        # Kill both processes
+        # Stop the voice agent
         print("Stopping voice agent...")
         voice_process.terminate()
         
-        print("Stopping API server...")
-        api_process.terminate()
-        
-        try:
-            voice_process.wait(timeout=3)
-            api_process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            print("Force killing processes...")
-            voice_process.kill()
-            api_process.kill()
-        
-        print("All processes stopped.")
+        # Only stop the API if we started a local one
+        if api_process:
+            print("Stopping API server...")
+            api_process.terminate()
+            
+            try:
+                voice_process.wait(timeout=3)
+                api_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                print("Force killing processes...")
+                voice_process.kill()
+                api_process.kill()
+            
+            print("All processes stopped.")
+        else:
+            try:
+                voice_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                print("Force killing voice agent...")
+                voice_process.kill()
+            
+            print("Voice agent stopped.")
     
     sys.exit(0)
 

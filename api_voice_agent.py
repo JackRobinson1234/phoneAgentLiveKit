@@ -12,9 +12,14 @@ import requests
 import json
 from gtts import gTTS
 import subprocess
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # API configuration
-API_BASE_URL = "http://localhost:5001"
+RAILWAY_URL = os.environ.get('RAILWAY_URL', '')
+API_BASE_URL = RAILWAY_URL if RAILWAY_URL else "http://localhost:5001"
 
 class APIVoiceInterface:
     def __init__(self, use_voice_output=True):
