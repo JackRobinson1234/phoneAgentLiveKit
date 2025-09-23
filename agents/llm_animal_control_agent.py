@@ -8,7 +8,7 @@ from state_machine.animal_control_states import (
     LLMGreetingAndDetermineServiceState, LLMEmergencyCaseState,
     LLMReportFoundState, LLMReportLostState, LLMPetSurrenderState,
     LLMScheduleSurrenderState, LLMGeneralInfoState, LLMCaseConfirmationState,
-    LLMCaseCompleteState, LLMErrorHandlingState
+    LLMCaseCompleteState, LLMErrorHandlingState, LLMFinalSummaryState
 )
 from .llm_service import llm_service
 from config.settings import AGENT_CONFIG
@@ -38,16 +38,17 @@ class LLMAnimalControlAgent:
         """Initialize the state machine with LLM-enhanced states"""
         # Use LLM-enhanced states
         states = [
-            LLMGreetingAndDetermineServiceState(self.database),
-            LLMEmergencyCaseState(self.database),
-            LLMReportFoundState(self.database),
-            LLMReportLostState(self.database),
-            LLMPetSurrenderState(self.database),
-            LLMScheduleSurrenderState(self.database),
-            LLMGeneralInfoState(self.database),
-            LLMCaseConfirmationState(self.database),
-            LLMCaseCompleteState(self.database),
-            LLMErrorHandlingState(self.database)
+            LLMGreetingAndDetermineServiceState(),
+            LLMEmergencyCaseState(),
+            LLMReportFoundState(),
+            LLMReportLostState(),
+            LLMPetSurrenderState(),
+            LLMScheduleSurrenderState(),
+            LLMGeneralInfoState(),
+            LLMCaseConfirmationState(),
+            LLMCaseCompleteState(),
+            LLMErrorHandlingState(),
+            LLMFinalSummaryState()
         ]
         
         # Add states to state machine

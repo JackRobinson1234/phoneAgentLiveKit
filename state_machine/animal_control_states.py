@@ -3,13 +3,12 @@ from datetime import datetime
 import re
 
 from .animal_control_state import AnimalControlState, StateResult
-from models.animal_database import MockAnimalDatabase
-from models.case import Case, CaseType, CaseStatus
+from .context_fields import ContextField
 
 class LLMGreetingAndDetermineServiceState(AnimalControlState):
     """Combined LLM-enhanced greeting and service determination state"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot, an AI assistant for animal control services.
 
 Current State: GREETING - Initial interaction with the user and service determination
@@ -22,8 +21,9 @@ Available services:
 5. General Information
 
 Your tasks:
-1. First, analyze their input using analyze_request tool
-2. Then, call generate_response tool with appropriate action
+1. First, use update_context tool to extract any information provided by the user
+2. Then, analyze their input using analyze_request tool
+3. Finally, call generate_response tool with appropriate action
 
 Decision logic:
 - If user just says "hello" or greets: Respond warmly and present the available services
@@ -34,23 +34,74 @@ Decision logic:
 - If user needs general information: transition to "GENERAL_INFO"
 - If unclear: Ask clarifying questions and present the available services
 
-CRITICAL: Determine the correct service and transition to the appropriate state when possible."""
+When generating direct responses (not transitions):
+- Always acknowledge what the user has said in a natural, conversational way
+- If the user's intent is unclear, acknowledge their message and ask clarifying questions
+- Be empathetic and professional in your tone
+- Tailor your response to the specific context of the conversation
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+
+CRITICAL: Use update_context tool to extract ANY information the user provides, even if they're just in the greeting state.
+For example, if they say "I lost my dog", use update_context to set animal_type="dog" and detected_intent="lost"."""
         
         super().__init__("GREETING", system_prompt)
-        self.database = database
+        
+        # Define required fields for different services
+        self.service_required_fields = {
+            "EMERGENCY_CASE": ['animal_type', 'animal_condition', 'location'],
+            "REPORT_FOUND": ['animal_type', 'location_found'],
+            "REPORT_LOST": ['animal_type', 'last_seen_location'],
+            "PET_SURRENDER": ['animal_type', 'surrender_reason'],
+            "GENERAL_INFO": ['info_topic']
+        }
     
-    def enter(self, context: Dict[str, Any]) -> str:
-        return """Hello! I'm AnimalControlBot, your AI assistant for animal control services.
-
-I can help you with the following services:
-
-1. Injured, Abused, or Emergency Cases
-2. Report Found Animal
-3. Report Lost Animal
-4. Schedule Pet Surrender
-5. General Information
-
-How can I assist you today? You can select a number or describe your situation."""
+    # Using the base class implementation for dynamic prompt generation
+    
+    def generate_contextual_prompt(self, context: Dict[str, Any]) -> str:
+        """Generate a contextual prompt for greeting state"""
+        # Add available services to context
+        context['available_services'] = [
+            "Injured, Abused, or Emergency Cases",
+            "Report Found Animal",
+            "Report Lost Animal",
+            "Schedule Pet Surrender",
+            "General Information"
+        ]
+        
+        # Let the base class generate the prompt with this context
+        return super().generate_contextual_prompt(context)
+    
+    def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
+        """Determine the next state based on context information"""
+        # Check if we have a detected intent or service type
+        service_type = context.get('service_type')
+        detected_intent = context.get('detected_intent')
+        
+        # Map intents/service types to states
+        if service_type == 'emergency' or detected_intent == 'emergency':
+            # Check if we have all required fields for emergency case
+            if all(field in context for field in self.service_required_fields['EMERGENCY_CASE']):
+                return "EMERGENCY_CASE"
+        elif service_type == 'found' or detected_intent == 'found':
+            # Check if we have all required fields for found animal
+            if all(field in context for field in self.service_required_fields['REPORT_FOUND']):
+                return "REPORT_FOUND"
+        elif service_type == 'lost' or detected_intent == 'lost':
+            # Check if we have all required fields for lost animal
+            if all(field in context for field in self.service_required_fields['REPORT_LOST']):
+                return "REPORT_LOST"
+        elif service_type == 'surrender' or detected_intent == 'surrender':
+            # Check if we have all required fields for pet surrender
+            if all(field in context for field in self.service_required_fields['PET_SURRENDER']):
+                return "PET_SURRENDER"
+        elif service_type == 'info' or detected_intent == 'info':
+            # Check if we have all required fields for general info
+            if all(field in context for field in self.service_required_fields['GENERAL_INFO']):
+                return "GENERAL_INFO"
+        
+        # No auto-advance if we don't have enough information
+        return None
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -70,48 +121,107 @@ How can I assist you today? You can select a number or describe your situation."
         except ValueError:
             pass
         
+        # Handle service type transitions based on detected intent or service_type
+        service_type = updated_context.get('service_type')
+        detected_intent = updated_context.get('detected_intent')
+        
+        # Only transition for specific service requests, not for greetings or general info
+        if detected_intent in ['greeting', 'info', 'other'] or not detected_intent:
+            # Stay in the GREETING state for greetings and general messages
+            return StateResult.CONTINUE, None, updated_context
+            
+        # Only transition for specific service types
+        if service_type == 'emergency' or detected_intent == 'emergency':
+            return StateResult.TRANSITION, "EMERGENCY_CASE", updated_context
+        elif service_type == 'found' or detected_intent == 'found':
+            return StateResult.TRANSITION, "REPORT_FOUND", updated_context
+        elif service_type == 'lost' or detected_intent == 'lost':
+            return StateResult.TRANSITION, "REPORT_LOST", updated_context
+        elif service_type == 'surrender' or detected_intent == 'surrender':
+            return StateResult.TRANSITION, "PET_SURRENDER", updated_context
+        
+        # Check for keywords in user input as a fallback
+        user_input_lower = user_input.lower()
+        if any(term in user_input_lower for term in ['emergency', 'injured', 'hurt', 'sick', 'abuse']):
+            return StateResult.TRANSITION, "EMERGENCY_CASE", updated_context
+        elif any(term in user_input_lower for term in ['found', 'stray']):
+            return StateResult.TRANSITION, "REPORT_FOUND", updated_context
+        elif any(term in user_input_lower for term in ['lost', 'missing']):
+            return StateResult.TRANSITION, "REPORT_LOST", updated_context
+        elif any(term in user_input_lower for term in ['surrender', 'give up', 'rehome']):
+            return StateResult.TRANSITION, "PET_SURRENDER", updated_context
+        elif any(term in user_input_lower for term in ['information', 'services', 'hours', 'locations', 'adoption', 'licensing']):
+            # Only transition to GENERAL_INFO for specific information requests
+            return StateResult.TRANSITION, "GENERAL_INFO", updated_context
+        
         return result, next_state, updated_context
 
 class LLMEmergencyCaseState(AnimalControlState):
     """LLM-enhanced emergency case handling state with step-by-step information collection"""
     
-    def __init__(self, database: MockAnimalDatabase):
-        system_prompt = """You are AnimalControlBot handling emergency animal cases.
+    def __init__(self):
+        system_prompt = """You are AnimalControlBot helping users with emergency animal situations.
 
-Current State: EMERGENCY_CASE - Collecting information about an injured, abused, or emergency animal case
+Current State: EMERGENCY_CASE - Collecting information about an animal emergency
 
 Your tasks:
-1. Collect information ONE STEP AT A TIME in this order:
+1. Use update_context tool to extract ANY information provided by the user
+2. Collect information in this order, but ONLY ask for information that hasn't already been provided:
    a. Animal type (dog, cat, bird, etc.)
-   b. The animal's condition or situation (injured, sick, abused)
-   c. Location of the animal (address or landmarks)
-   d. Whether the animal is contained/secured or loose
+   b. Animal's condition or injury
+   c. Location of the animal
+   d. Whether the animal is contained/secured
 
-2. For each step:
-   - Ask for ONLY the next missing piece of information
+3. For each interaction:
+   - FIRST check what information is already in the context
+   - Ask ONLY for the NEXT SINGLE missing piece of information
+   - NEVER ask for information that's already in the context
    - If user provides multiple pieces of information at once, acknowledge and extract all provided info
-   - Don't repeat questions for information already provided
    - Move to the next missing information
 
-3. Provide immediate guidance based on the situation
-4. Use generate_response with appropriate next_action
+4. When generating responses:
+   - ALWAYS acknowledge the MOST RECENTLY provided information first
+   - For example, if user just told you the location, start with "Thank you for letting me know the animal is at [location]."
+   - If they just provided condition information, acknowledge that: "I understand the [animal_type] is [condition]."
+   - Only after acknowledging recent information, ask for the next piece of information
+
+5. Provide immediate guidance based on the situation
+6. Use generate_response with appropriate next_action
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
 
 CRITICAL: For true emergencies, emphasize the importance of calling the emergency hotline immediately.
-CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
+CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context.
+CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains animal_condition='coughing up blood', NEVER ask about the condition again.
+CRITICAL: NEVER start your response with generic phrases like "I understand there's an emergency" when you have more specific information. Always acknowledge the most recent information first."""
+        
+        # Add specialized transition prompts for when transitioning from different states
+        self.transition_prompts = {
+            "GREETING": """You are now helping a user with an animal emergency situation.
+            
+When responding to the user:
+1. Acknowledge the emergency nature of their situation
+2. Express urgency while remaining calm and professional
+3. Acknowledge any information they've already shared (animal type, condition, etc.)
+4. For critical emergencies (severe injuries, life-threatening situations), immediately provide the emergency hotline number
+5. Begin gathering missing information in a focused, efficient manner
+6. Don't ask for information they've already provided
+
+Your tone should be urgent but reassuring, focusing on getting the critical information as quickly as possible."""
+        }
         
         super().__init__("EMERGENCY_CASE", system_prompt)
-        self.database = database
         self.required_fields = [
-            'animal_type',        # Step 1a
-            'animal_condition',  # Step 1b
-            'location',          # Step 1c
-            'animal_contained'   # Step 1d
+            ContextField.ANIMAL_TYPE.value,        # Step 1a
+            ContextField.ANIMAL_CONDITION.value,   # Step 1b
+            ContextField.LOCATION.value,           # Step 1c
+            ContextField.ANIMAL_CONTAINED.value    # Step 1d
         ]
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """I understand this is an emergency animal situation. Let's gather the necessary information quickly.
-
-First, what type of animal is involved?"""
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -140,13 +250,9 @@ First, what type of animal is involved?"""
             
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
         
-        # Otherwise, ask for the next piece of information
-        next_field = missing_fields[0]
-        prompt_message = self._get_prompt_for_field(next_field, updated_context)
-        
-        # Only override the message if the LLM didn't provide a good follow-up question
-        if not updated_context.get('message') or 'thank you' in updated_context.get('message', '').lower():
-            updated_context['message'] = prompt_message
+        # Otherwise, use the LLM-generated response
+        # Do not override with hardcoded prompts - let the LLM handle the conversation flow
+        # The message should already be set by process_input_with_llm
         
         return StateResult.CONTINUE, None, updated_context
     
@@ -177,47 +283,81 @@ First, what type of animal is involved?"""
             return f"{acknowledgment}\n\n{prompts[field]}{emergency_note}"
         else:
             return f"{prompts[field]}{emergency_note}"
+            
+    def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
+        """Determine the next state based on context information"""
+        # If all required fields are present, move to case confirmation
+        if all(field in context for field in self.required_fields):
+            return "CASE_CONFIRMATION"
+        return None
 
 class LLMReportFoundState(AnimalControlState):
     """LLM-enhanced state for reporting found animals with step-by-step information collection"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot helping users report found animals.
 
 Current State: REPORT_FOUND - Collecting information about a found animal
 
 Your tasks:
-1. Collect information ONE STEP AT A TIME in this order:
+1. Use update_context tool to extract ANY information provided by the user
+2. Collect information in this order, but ONLY ask for information that hasn't already been provided:
    a. Animal type (dog, cat, bird, etc.) and breed if known
-   b. Color, size, and appearance
+   b. Color, size, and distinctive markings
    c. Where and when the animal was found
-   d. Identifying features (collar, tags, microchip, distinctive markings)
+   d. Identifying features (collar, tags, microchip)
    e. Whether the finder can temporarily keep the animal
 
-2. For each step:
-   - Ask for ONLY the next missing piece of information
+3. For each interaction:
+   - FIRST check what information is already in the context
+   - Ask ONLY for the NEXT SINGLE missing piece of information
+   - NEVER ask for information that's already in the context
    - If user provides multiple pieces of information at once, acknowledge and extract all provided info
-   - Don't repeat questions for information already provided
    - Move to the next missing information
 
-3. Use generate_response with appropriate next_action
+4. When generating responses:
+   - ALWAYS acknowledge the MOST RECENTLY provided information first
+   - For example, if user just told you the location, start with "Thank you for letting me know the animal was found at [location]."
+   - If they just provided breed and color information, acknowledge that: "I've noted that you found a [color] [breed]."
+   - Only after acknowledging recent information, ask for the next piece of information
 
-CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
+5. Use generate_response with appropriate next_action
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+
+CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
+
+CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains animal_color='brown', NEVER ask about the color again.
+
+CRITICAL: NEVER start your response with generic phrases like "I understand you found a dog" when you have more specific information. Always acknowledge the most recent information first."""
+        
+        # Add specialized transition prompts for when transitioning from different states
+        self.transition_prompts = {
+            "GREETING": """You are now helping a user who has just indicated they've found an animal.
+            
+When responding to the user:
+1. Thank them for reporting the found animal
+2. Acknowledge any information they've already shared (animal type, location, etc.)
+3. Explain briefly that you'll help them create a found animal report
+4. Begin gathering missing information in a conversational way
+5. Don't ask for information they've already provided
+
+Your tone should be appreciative and helpful while efficiently collecting the needed information."""
+        }
         
         super().__init__("REPORT_FOUND", system_prompt)
-        self.database = database
         self.required_fields = [
-            'animal_type',        # Step 1a
-            'animal_description', # Step 1b
-            'location_found',    # Step 1c
-            'identifying_features', # Step 1d
-            'finder_can_keep'    # Step 1e
+            ContextField.ANIMAL_TYPE.value,          # Step 1a
+            ContextField.ANIMAL_DESCRIPTION.value,   # Step 1b
+            ContextField.LOCATION_FOUND.value,       # Step 1c
+            ContextField.IDENTIFYING_FEATURES.value, # Step 1d
+            ContextField.FINDER_CAN_KEEP.value       # Step 1e
         ]
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """Thank you for reporting a found animal. Let's start gathering information to help reunite it with its owner.
-
-First, please tell me what type of animal you've found (dog, cat, bird, etc.) and the breed if you know it."""
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -231,27 +371,21 @@ First, please tell me what type of animal you've found (dog, cat, bird, etc.) an
             updated_context['case_details'] = {
                 'type': 'found',
                 'animal_type': updated_context.get('animal_type'),
-                'description': updated_context.get('animal_description', ''),
+                'description': updated_context.get('animal_description', 'Unknown'),
                 'location_found': updated_context.get('location_found'),
-                'found_time': updated_context.get('found_time', 'Recently'),
-                'identifying_features': updated_context.get('identifying_features', 'None reported'),
-                'finder_can_keep': updated_context.get('finder_can_keep', False),
-                'finder_contact': updated_context.get('finder_contact', ''),
+                'identifying_features': updated_context.get('identifying_features', 'None'),
+                'finder_can_keep': updated_context.get('finder_can_keep', 'Unknown'),
                 'timestamp': datetime.now().isoformat()
             }
             
             # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about the found animal. Let me summarize what we have so far."
+            updated_context['message'] = "Thank you for providing all the necessary information about this found animal. Let me summarize what we have so far."
             
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
         
-        # Otherwise, ask for the next piece of information
-        next_field = missing_fields[0]
-        prompt_message = self._get_prompt_for_field(next_field, updated_context)
-        
-        # Only override the message if the LLM didn't provide a good follow-up question
-        if not updated_context.get('message') or 'thank you' in updated_context.get('message', '').lower():
-            updated_context['message'] = prompt_message
+        # Otherwise, use the LLM-generated response
+        # Do not override with hardcoded prompts - let the LLM handle the conversation flow
+        # The message should already be set by process_input_with_llm
         
         return StateResult.CONTINUE, None, updated_context
     
@@ -278,50 +412,90 @@ First, please tell me what type of animal you've found (dog, cat, bird, etc.) an
             return f"{acknowledgment}\n\n{prompts[field]}"
         else:
             return prompts[field]
+            
+    def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
+        """Determine the next state based on context information"""
+        # If all required fields are present, move to case confirmation
+        if all(field in context for field in self.required_fields):
+            return "CASE_CONFIRMATION"
+        return None
 
 class LLMReportLostState(AnimalControlState):
     """LLM-enhanced state for reporting lost animals with step-by-step information collection"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot helping users report lost animals.
 
 Current State: REPORT_LOST - Collecting information about a lost animal
 
 Your tasks:
-1. Collect information ONE STEP AT A TIME in this order:
+1. Use update_context tool to extract ANY information provided by the user
+2. Collect information in this order, but ONLY ask for information that hasn't already been provided:
    a. Animal type (dog, cat, bird, etc.), breed, and name
    b. Color, size, and any distinctive markings
    c. Where and when the animal was last seen
    d. Identifying features (collar, tags, microchip)
    e. Owner contact information (name and phone number)
 
-2. For each step:
-   - Ask for ONLY the next missing piece of information
+3. For each interaction:
+   - FIRST check what information is already in the context
+   - Ask ONLY for the NEXT SINGLE missing piece of information
+   - NEVER ask for information that's already in the context
    - If user provides multiple pieces of information at once, acknowledge and extract all provided info
-   - Don't repeat questions for information already provided
    - Move to the next missing information
 
-3. Use generate_response with appropriate next_action
+4. When generating responses:
+   - ALWAYS acknowledge the MOST RECENTLY provided information first
+   - For example, if user just told you the location, start with "Thank you for letting me know your pet was last seen at [location]."
+   - If they just provided breed and color information, acknowledge that: "I've noted that your [animal_type] is a [color] [breed]."
+   - Only after acknowledging recent information, ask for the next piece of information
 
-CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
+5. Use generate_response with appropriate next_action
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+
+CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
+
+CRITICAL: NEVER ask for information that's already been provided. For example, if the context already contains animal_color='green', NEVER ask about the color again.
+
+CRITICAL: NEVER start your response with generic phrases like "I understand you're looking for your dog" when you have more specific information. Always acknowledge the most recent information first."""
+        
+        # Add specialized transition prompt for when transitioning from GREETING to REPORT_LOST
+        self.transition_prompts = {
+            "GREETING": """You are now helping a user who has just indicated they've lost a pet.
+            
+When responding to the user:
+1. Express empathy about their lost pet
+2. Acknowledge any information they've already shared (pet name, type, etc.)
+3. Explain briefly that you'll help them create a lost pet report
+4. Begin gathering missing information in a conversational way
+5. Don't ask for information they've already provided
+
+Your tone should be supportive and reassuring while efficiently collecting the needed information."""
+        }
         
         super().__init__("REPORT_LOST", system_prompt)
-        self.database = database
         self.required_fields = [
-            'animal_type',        # Step 1a
-            'animal_description', # Step 1b
-            'last_seen_location', # Step 1c
-            'identifying_features', # Step 1d
-            'owner_contact'       # Step 1e
+            ContextField.ANIMAL_TYPE.value,          # Step 1a
+            ContextField.ANIMAL_DESCRIPTION.value,   # Step 1b
+            ContextField.LAST_SEEN_LOCATION.value,   # Step 1c
+            ContextField.IDENTIFYING_FEATURES.value, # Step 1d
+            ContextField.OWNER_CONTACT.value         # Step 1e
         ]
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """I'm sorry to hear about your lost pet. Let's start gathering information to help find them.
-
-First, please tell me what type of animal you've lost (dog, cat, bird, etc.), including breed and name if you know them."""
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
+        
+        # Validate contact information if provided
+        if updated_context.get('owner_contact') and not self._validate_contact(updated_context['owner_contact']):
+            updated_context['contact_validation_error'] = True
+            # Remove invalid contact so we'll ask for it again
+            del updated_context['owner_contact']
         
         # Determine which information we still need to collect
         missing_fields = self._get_missing_fields(updated_context)
@@ -345,7 +519,14 @@ First, please tell me what type of animal you've lost (dog, cat, bird, etc.), in
             # Add a message to the context indicating all information has been collected
             updated_context['message'] = "Thank you for providing all the necessary information about your lost pet. Let me summarize what we have so far."
             
+            # Auto-transition to confirmation state when all fields are complete
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
+        
+        # Auto-transition if the LLM requested a transition and we have enough information
+        if result == StateResult.TRANSITION and next_state and len(missing_fields) <= 1:
+            # We're only missing one field, but the LLM wants to transition
+            # This allows for more natural conversation flow
+            return result, next_state, updated_context
         
         # Otherwise, ask for the next piece of information
         next_field = missing_fields[0]
@@ -356,6 +537,22 @@ First, please tell me what type of animal you've lost (dog, cat, bird, etc.), in
             updated_context['message'] = prompt_message
         
         return StateResult.CONTINUE, None, updated_context
+    
+    def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
+        """Determine the next state based on context information"""
+        # If all required fields are present, move to case confirmation
+        if all(field in context for field in self.required_fields):
+            return "CASE_CONFIRMATION"
+        return None
+        
+    def _validate_contact(self, contact: str) -> bool:
+        """Validate contact information format"""
+        # If we get here, the error handling failed
+        return "I'm sorry, but I encountered an error. Please try again or contact support."
+        if re.match(r'^\d{10}$', cleaned):
+            return True
+            
+        return False
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
@@ -371,6 +568,16 @@ First, please tell me what type of animal you've lost (dog, cat, bird, etc.), in
             'owner_contact': "Finally, please provide your contact information (name and phone number) so we can reach you if your pet is found."
         }
         
+        # Add validation error message if needed
+        if field == 'owner_contact' and context.get('contact_validation_error'):
+            prompts['owner_contact'] = "I couldn't validate the contact information you provided. Please provide a valid phone number (10 digits) or email address."
+        
+        # Calculate progress
+        total_fields = len(self.required_fields)
+        completed_fields = total_fields - len(self._get_missing_fields(context))
+        progress_percent = int((completed_fields / total_fields) * 100)
+        progress_bar = f"[Progress: {progress_percent}% - Step {completed_fields + 1} of {total_fields}]"
+        
         # Acknowledge information already provided
         acknowledgment = ""
         if context.get('animal_type'):
@@ -378,15 +585,16 @@ First, please tell me what type of animal you've lost (dog, cat, bird, etc.), in
         if context.get('animal_name'):
             acknowledgment += f"Their name is {context.get('animal_name')}. "
         
+        # Combine progress bar with prompt
         if acknowledgment:
-            return f"{acknowledgment}\n\n{prompts[field]}"
+            return f"{progress_bar}\n\n{acknowledgment}\n\n{prompts[field]}"
         else:
-            return prompts[field]
+            return f"{progress_bar}\n\n{prompts[field]}"
 
 class LLMPetSurrenderState(AnimalControlState):
     """LLM-enhanced state for pet surrender scheduling with step-by-step information collection"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot helping users schedule pet surrenders.
 
 Current State: PET_SURRENDER - Collecting information for pet surrender
@@ -410,18 +618,17 @@ CRITICAL: Be compassionate but informative about the surrender process.
 CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
         
         super().__init__("PET_SURRENDER", system_prompt)
-        self.database = database
         self.required_fields = [
-            'animal_type',        # Step 1a
-            'surrender_reason',  # Step 1b
-            'health_issues',     # Step 1c (combines medical and behavioral)
-            'owner_contact'      # Step 1d
+            ContextField.ANIMAL_TYPE.value,       # Step 1a
+            ContextField.SURRENDER_REASON.value,  # Step 1b
+            ContextField.HEALTH_ISSUES.value,     # Step 1c (combines medical and behavioral)
+            ContextField.OWNER_CONTACT.value      # Step 1d
         ]
     
     def enter(self, context: Dict[str, Any]) -> str:
-        return """I understand you're considering surrendering a pet. This can be a difficult decision.
-
-Let's start gathering the information we need. First, could you tell me what type of animal you're surrendering (dog, cat, etc.), including breed, age, and name if you know them?"""
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'GREETING'))
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -470,13 +677,13 @@ Let's start gathering the information we need. First, could you tell me what typ
             'animal_type': "What type of animal are you surrendering (dog, cat, etc.)? Please include breed, age, and name if you know them.",
             'surrender_reason': "I understand this can be difficult. Could you share the reason you need to surrender your pet?",
             'health_issues': "Are there any medical or behavioral issues we should be aware of?",
-            'owner_contact': "Finally, please provide your contact information (name and phone number) so we can reach you to schedule the surrender."
+            'owner_contact': "Please provide your contact information (name and phone number) so we can reach you if needed."
         }
         
         # Acknowledge information already provided
         acknowledgment = ""
-        if context.get('animal_type'):
-            pet_type = context.get('animal_type')
+        pet_type = context.get('animal_type', '')
+        if pet_type:
             pet_name = context.get('animal_name', '')
             if pet_name:
                 acknowledgment += f"I understand you're surrendering your {pet_type} named {pet_name}. "
@@ -491,7 +698,7 @@ Let's start gathering the information we need. First, could you tell me what typ
 class LLMScheduleSurrenderState(AnimalControlState):
     """LLM-enhanced state for scheduling pet surrender appointments"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot scheduling pet surrender appointments.
 
 Current State: SCHEDULE_SURRENDER - Scheduling a surrender appointment
@@ -505,9 +712,9 @@ Your tasks:
 CRITICAL: Ensure the user understands the surrender process and what to bring."""
         
         super().__init__("SCHEDULE_SURRENDER", system_prompt)
-        self.database = database
     
-    def enter(self, context: Dict[str, Any]) -> str:
+    def generate_contextual_prompt(self, context: Dict[str, Any]) -> str:
+        """Generate a contextual prompt with available dates"""
         # In a real system, these would come from a database
         available_dates = [
             "Monday, October 5 (10:00 AM - 2:00 PM)",
@@ -515,18 +722,11 @@ CRITICAL: Ensure the user understands the surrender process and what to bring.""
             "Friday, October 9 (9:00 AM - 12:00 PM)"
         ]
         
-        dates_list = "\n".join([f"{i+1}. {date}" for i, date in enumerate(available_dates)])
+        # Add dates to context for later reference
+        context['available_dates'] = available_dates
         
-        return f"""Thank you for providing that information. We can schedule your pet surrender appointment on one of the following dates:
-
-{dates_list}
-
-Please select a date by number, or let me know if none of these work for you.
-
-On the day of surrender, please bring:
-- Your photo ID
-- Any medical records for the pet
-- Any supplies or favorite toys you wish to donate with the pet"""
+        # Let the base class generate the prompt with this context
+        return super().generate_contextual_prompt(context)
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
@@ -549,11 +749,18 @@ On the day of surrender, please bring:
             pass
         
         return result, next_state, updated_context
+        
+    def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
+        """Determine the next state based on context information"""
+        # If we have a selected date, move to case confirmation
+        if context.get('selected_date'):
+            return "CASE_CONFIRMATION"
+        return None
 
 class LLMGeneralInfoState(AnimalControlState):
     """LLM-enhanced state for providing general information"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot providing general information about animal control services.
 
 Current State: GENERAL_INFO - Providing general information about services
@@ -567,7 +774,6 @@ Your tasks:
 CRITICAL: Be informative and helpful, directing users to specific services when appropriate."""
         
         super().__init__("GENERAL_INFO", system_prompt)
-        self.database = database
     
     def enter(self, context: Dict[str, Any]) -> str:
         return """I can provide information about our animal control services, including:
@@ -601,7 +807,7 @@ What specific information are you looking for today?"""
 class LLMCaseConfirmationState(AnimalControlState):
     """LLM-enhanced state for case confirmation"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot confirming case details with the user.
 
 Current State: CASE_CONFIRMATION - Confirming case details and providing next steps
@@ -615,7 +821,6 @@ Your tasks:
 CRITICAL: Ensure all necessary information has been collected and provide clear next steps."""
         
         super().__init__("CASE_CONFIRMATION", system_prompt)
-        self.database = database
     
     def enter(self, context: Dict[str, Any]) -> str:
         case_details = context.get('case_details', {})
@@ -705,7 +910,7 @@ Is this information correct? If not, please let me know what needs to be changed
 class LLMCaseCompleteState(AnimalControlState):
     """LLM-enhanced state for case completion"""
     
-    def __init__(self, database: MockAnimalDatabase):
+    def __init__(self):
         system_prompt = """You are AnimalControlBot confirming case submission and providing final information.
 
 Current State: CASE_COMPLETE - Confirming case submission and providing next steps
@@ -720,7 +925,6 @@ Your tasks:
 CRITICAL: Ensure the user knows their case has been submitted and what to expect next."""
         
         super().__init__("CASE_COMPLETE", system_prompt)
-        self.database = database
     
     def enter(self, context: Dict[str, Any]) -> str:
         case_details = context.get('case_details', {})
@@ -800,33 +1004,9 @@ Thank you for contacting animal control. Is there anything else I can help you w
             return StateResult.COMPLETE, None, updated_context
         
         return result, next_state, updated_context
-
-class LLMErrorHandlingState(AnimalControlState):
-    """LLM-enhanced state for error handling"""
-    
-    def __init__(self, database: MockAnimalDatabase):
-        system_prompt = """You are AnimalControlBot helping users recover from errors.
-
-Current State: ERROR_HANDLING - Helping the user recover from an error
-
-Your tasks:
-1. Acknowledge the error that occurred
-2. Offer recovery options (start over, try again, or end conversation)
-3. Use the generate_response tool to provide your response
-
-Available tools:
-- generate_response: Provide your response and next action
-
-When the user wants to start over, set next_action="transition" and next_state="GREETING".
-When the user wants to try again, set next_action="transition" and next_state equal to the previous_state in context.
-When the user wants to end the conversation, set next_action="complete"."""
-        
-        super().__init__("ERROR_HANDLING", system_prompt)
-        self.database = database
     
     def enter(self, context: Dict[str, Any]) -> str:
-        error_message = context.get('error_message', 'An unexpected error occurred.')
-        
+        return """Hello! Welcome to Animal Control Services. How can I assist you today?"""
         return (f"{error_message}\n\n"
                 f"Would you like to:\n"
                 f"1. Start over\n"
@@ -835,4 +1015,92 @@ When the user wants to end the conversation, set next_action="complete"."""
                 f"Please select an option.")
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        return self.process_input_with_llm(user_input, context)
+
+
+class LLMFinalSummaryState(AnimalControlState):
+    """LLM-enhanced state for final summary and call completion"""
+    
+    def __init__(self):
+        system_prompt = """You are AnimalControlBot providing a final summary of the conversation.
+
+Current State: FINAL_SUMMARY - Summarizing all collected information and ending the call
+
+Your tasks:
+1. Thank the user for contacting Animal Control Services
+2. Summarize ALL the information collected during the conversation
+3. Provide a clear case ID or reference number if applicable
+4. Explain what will happen next (e.g., dispatch of animal control officer, follow-up call, etc.)
+5. Ask if there's anything else the user needs before ending the call
+
+When generating your response:
+- Be thorough in your summary - include ALL details the user has provided
+- Organize the information in a clear, structured format
+- Be warm and professional in your tone
+- Assure the user that their case will be handled appropriately
+
+Use generate_response with appropriate next_action (usually 'complete' to end the conversation)
+
+CRITICAL: This is the final state, so make sure your summary is comprehensive and leaves the user with a clear understanding of what will happen next."""
+        
+        super().__init__("FINAL_SUMMARY", system_prompt)
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        """Generate a comprehensive summary based on the context"""
+        # Determine the case type
+        case_type = context.get('service_type', 'general')
+        
+        # Generate a case ID if not already present
+        if not context.get('case_id'):
+            import random
+            case_id = f"AC-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+            context['case_id'] = case_id
+        
+        # Let the LLM generate the actual summary content using the enhanced prompt
+        return self.process_state_entry(context, context.get('previous_state', 'UNKNOWN'))
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        """Process user input in the final summary state"""
+        result, next_state, updated_context = self.process_input_with_llm(user_input, context)
+        
+        # Check for conversation ending keywords
+        user_input_lower = user_input.lower().strip()
+        if any(term in user_input_lower for term in ['bye', 'goodbye', 'thanks', 'thank you', 'that\'s all', 'done']):
+            return StateResult.COMPLETE, None, updated_context
+        
+        # Check for new service request
+        if any(term in user_input_lower for term in ['new', 'another', 'different', 'start over']):
+            return StateResult.TRANSITION, "GREETING", updated_context
+        
+        return result, next_state, updated_context
+
+
+class LLMErrorHandlingState(AnimalControlState):
+    """LLM-enhanced error handling state"""
+    
+    def __init__(self):
+        system_prompt = """You are AnimalControlBot handling an error situation.
+
+Current State: ERROR_HANDLING - Helping the user recover from an error
+
+Your tasks:
+1. Acknowledge the error that occurred
+2. Offer recovery options (start over, try again, or end conversation)
+3. Use the generate_response tool to provide your response
+
+When the user wants to start over, set next_action="transition" and next_state="GREETING".
+When the user wants to try again, set next_action="transition" and next_state equal to the previous_state in context.
+When the user wants to end the conversation, set next_action="complete".
+
+CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response."""
+        
+        super().__init__("ERROR_HANDLING", system_prompt)
+    
+    def enter(self, context: Dict[str, Any]) -> str:
+        """Generate a response using the LLM when entering the state"""
+        # Use the process_state_entry method to generate a response with the LLM
+        return self.process_state_entry(context, context.get('previous_state', 'UNKNOWN'))
+    
+    def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
+        """Process user input in the error handling state"""
         return self.process_input_with_llm(user_input, context)

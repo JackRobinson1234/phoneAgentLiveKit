@@ -48,16 +48,21 @@ class StateMachine:
         self.context['turn_count'] = self.context.get('turn_count', 0) + 1
         
         try:
-            # Process input in current state
+            # Phase 1: Process input in current state to determine next action
             result, next_state_name, updated_context = self.current_state.process_input(
                 user_input, self.context
             )
             
-            # Update context
+            # Update context with results from first phase
             self.context.update(updated_context)
             
-            # Handle the result
-            response = self._handle_state_result(result, next_state_name)
+            # Handle state transition if needed
+            if result == StateResult.TRANSITION and next_state_name:
+                # Perform the transition - the next state's enter method will generate the response
+                response = self._handle_state_transition(next_state_name)
+            else:
+                # No transition, handle the result normally
+                response = self._handle_state_result(result, next_state_name)
             
             # Log system response
             self._log_interaction("SYSTEM", response)
@@ -72,6 +77,28 @@ class StateMachine:
             self._log_interaction("SYSTEM", response)
             return response
     
+    def _handle_state_transition(self, next_state_name: str) -> str:
+        """Handle state transition with a two-phase approach"""
+        if next_state_name not in self.states:
+            raise RuntimeError(f"Invalid transition to state: {next_state_name}")
+        
+        print(f"🔄 SYSTEM: STATE TRANSITION - Exiting '{self.current_state.name}' → Entering '{next_state_name}'")
+        
+        # Exit current state
+        self.current_state.exit(self.context)
+        self.current_state.reset_retry_count()
+        
+        # Transition to next state
+        previous_state = self.current_state
+        self.current_state = self.states[next_state_name]
+        
+        # Phase 2: Process in the new state with the updated context
+        # This is the second LLM call that generates a response in the new state context
+        response = self.current_state.process_state_entry(self.context, previous_state.name)
+        
+        print(f"🔄 SYSTEM: Now in state '{next_state_name}'")
+        return response
+    
     def _handle_state_result(self, result: StateResult, next_state_name: Optional[str]) -> str:
         """Handle the result of state processing"""
         if result == StateResult.CONTINUE:
@@ -81,26 +108,32 @@ class StateMachine:
                                                  "I didn't understand that. Could you please try again?"))
         
         elif result == StateResult.TRANSITION:
-            if not next_state_name or next_state_name not in self.states:
-                raise RuntimeError(f"Invalid transition to state: {next_state_name}")
-            
-            print(f"🔄 SYSTEM: STATE TRANSITION - Exiting '{self.current_state.name}' → Entering '{next_state_name}'")
-            
-            # Exit current state
-            self.current_state.exit(self.context)
-            self.current_state.reset_retry_count()
-            
-            # Transition to next state
-            self.current_state = self.states[next_state_name]
-            response = self.current_state.enter(self.context)
-            
-            print(f"🔄 SYSTEM: Now in state '{next_state_name}'")
-            return response
+            # This should now be handled by _handle_state_transition
+            # This is kept for backward compatibility or direct calls
+            return self._handle_state_transition(next_state_name) if next_state_name else \
+                   "I'm not sure what to do next. Could you please try again?"
         
         elif result == StateResult.COMPLETE:
-            self.is_complete = True
-            return self.context.get('completion_message', 
-                                  "Thank you! The conversation is complete.")
+            # Before marking as complete, transition to FINAL_SUMMARY state if it exists
+            if 'FINAL_SUMMARY' in self.states and self.current_state.name != 'FINAL_SUMMARY':
+                print(f"🔄 SYSTEM: STATE TRANSITION - Exiting '{self.current_state.name}' → Entering 'FINAL_SUMMARY' for final summary")
+                
+                # Store the previous state in context
+                self.context['previous_state'] = self.current_state.name
+                
+                # Transition to the final summary state
+                previous_state = self.current_state
+                self.current_state = self.states['FINAL_SUMMARY']
+                
+                # Process state entry for the final summary
+                response = self.current_state.process_state_entry(self.context, previous_state.name)
+                print(f"🔄 SYSTEM: Now in state 'FINAL_SUMMARY'")
+                return response
+            else:
+                # If no FINAL_SUMMARY state or already in it, mark as complete
+                self.is_complete = True
+                return self.context.get('completion_message', 
+                                      "Thank you! The conversation is complete.")
         
         elif result == StateResult.ERROR:
             # Handle error state

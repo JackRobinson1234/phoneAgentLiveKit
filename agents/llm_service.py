@@ -203,11 +203,28 @@ class LLMToolManager:
     def _register_default_tools(self):
         """Register default tools for animal control"""
         
+        # Tool for updating conversation context
+        self.register_tool(
+            "update_context",
+            "Update conversation context with extracted information from user input",
+            {
+                "type": "object",
+                "properties": {
+                    "context_updates": {
+                        "type": "object",
+                        "description": "Key-value pairs to update in the conversation context",
+                        "additionalProperties": True
+                    }
+                },
+                "required": ["context_updates"]
+            }
+        )
+        
         # Tool for analyzing animal control requests
         self.register_tool(
-            name="analyze_request",
-            description="Analyze user input for animal control service needs",
-            parameters={
+            "analyze_request",
+            "Analyze user input for animal control service needs",
+            {
                 "type": "object",
                 "properties": {
                     "intent": {
@@ -327,19 +344,20 @@ class LLMToolManager:
         """Get relevant tools for a specific state"""
         state_tool_mapping = {
             # Animal control agent states
-            "GREETING": ["analyze_request", "generate_response"],
-            "EMERGENCY_CASE": ["analyze_request", "generate_response"],
-            "REPORT_FOUND": ["analyze_request", "generate_response"],
-            "REPORT_LOST": ["analyze_request", "generate_response"],
-            "PET_SURRENDER": ["analyze_request", "generate_response"],
-            "SCHEDULE_SURRENDER": ["parse_datetime_request", "generate_response"],
-            "GENERAL_INFO": ["analyze_request", "generate_response"],
-            "CASE_CONFIRMATION": ["generate_response"],
-            "CASE_COMPLETE": ["generate_response"],
-            "ERROR_HANDLING": ["generate_response"]
+            "GREETING": ["analyze_request", "update_context", "generate_response"],
+            "EMERGENCY_CASE": ["analyze_request", "update_context", "generate_response"],
+            "REPORT_FOUND": ["analyze_request", "update_context", "generate_response"],
+            "REPORT_LOST": ["analyze_request", "update_context", "generate_response"],
+            "PET_SURRENDER": ["analyze_request", "update_context", "generate_response"],
+            "SCHEDULE_SURRENDER": ["parse_datetime_request", "update_context", "generate_response"],
+            "GENERAL_INFO": ["analyze_request", "update_context", "generate_response"],
+            "CASE_CONFIRMATION": ["update_context", "generate_response"],
+            "CASE_COMPLETE": ["update_context", "generate_response"],
+            "ERROR_HANDLING": ["update_context", "generate_response"]
         }
         
-        tool_names = state_tool_mapping.get(state_name, ["generate_response"])
+        # Always include update_context and generate_response as fallbacks
+        tool_names = state_tool_mapping.get(state_name, ["update_context", "generate_response"])
         return [self.tools[name] for name in tool_names if name in self.tools]
 
 # Global instances

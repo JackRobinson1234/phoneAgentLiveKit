@@ -6,6 +6,7 @@ import json
 
 from agents.llm_service import llm_service, tool_manager
 from config.settings import AVAILABLE_MODELS
+from .context_fields import ContextField
 
 class StateResult(Enum):
     """Possible results from state execution"""
@@ -43,13 +44,154 @@ Guidelines:
 
 Always use the generate_response tool to provide your final response and next action."""
     
-    @abstractmethod
+    def process_state_entry(self, context: Dict[str, Any], previous_state: str) -> str:
+        """
+        Process entry into this state with a dedicated LLM call.
+        This is the second phase of the two-call architecture for state transitions.
+        
+        Args:
+            context: The current conversation context
+            previous_state: The name of the previous state
+            
+        Returns:
+            A response message to display to the user
+        """
+        
+        # Create a specialized prompt for state entry
+        entry_prompt = self._create_state_entry_prompt(context, previous_state)
+        
+        # Make LLM call with the specialized prompt
+        try:
+            # Build messages for the LLM
+            messages = [
+                {"role": "system", "content": entry_prompt},
+                {"role": "user", "content": f"Generate an appropriate response for entering the {self.name} state. Context: {json.dumps(self._get_relevant_context(context))}"},
+            ]
+            
+            # Add conversation history if available
+            if context.get('conversation_history'):
+                # Add last few turns of conversation history
+                history = context['conversation_history'][-3:] if len(context['conversation_history']) > 3 else context['conversation_history']
+                for turn in history:
+                    role = "assistant" if turn['speaker'] == "SYSTEM" else "user"
+                    messages.append({"role": role, "content": turn['message']})
+            
+            # Get available tools for this state
+            tools = tool_manager.get_tools_for_state(self.name)
+            
+            # Make LLM call
+            print(f"🔧 SYSTEM: Making LLM call for state entry '{self.name}' with {len(tools)} tools available")
+            response = llm_service.chat_completion(
+                messages=messages,
+                tools=tools,
+                model=self.model
+            )
+            
+            # Process the response
+            if response.tool_calls:
+                # Handle tool calls
+                for tool_call in response.tool_calls:
+                    tool_result = self._handle_tool_call(tool_call, context, "")
+                    if tool_result and 'response' in tool_result:
+                        return tool_result['response']
+            
+            # If no tool calls or no valid response from tools, use the direct response
+            if response.content:
+                return response.content.strip()
+                
+        except Exception as e:
+            print(f"🔧 SYSTEM: Error generating state entry response: {str(e)}")
+        
+        # Fallback to the standard enter method if the specialized approach fails
+        return self.enter(context)
+    
     def enter(self, context: Dict[str, Any]) -> str:
         """
-        Called when entering this state.
-        Returns the message to display to the user.
+        Enter this state and generate an initial response.
+        
+        Args:
+            context: Current conversation context
+            
+        Returns:
+            The message to display to the user.
         """
-        pass
+        # Default implementation: return a generic message
+        # Subclasses should override this for better responses
+        return f"You are now in the {self.name} state." + self.generate_contextual_prompt(context)
+        
+    def _create_state_entry_prompt(self, context: Dict[str, Any], previous_state: str) -> str:
+        """Create a specialized prompt for entering this state from another state"""
+        base_prompt = self.system_prompt
+        
+        # Check if we have a specialized transition prompt for this transition
+        if hasattr(self, 'transition_prompts') and previous_state in self.transition_prompts:
+            # Use the specialized transition prompt
+            transition_guidance = self.transition_prompts[previous_state]
+        else:
+            # Use the default transition guidance
+            transition_guidance = f"""
+
+You are now in the {self.name} state after transitioning from {previous_state}.
+
+Your task is to generate an appropriate response acknowledging this transition and guiding the user through this new state.
+
+When generating your response:
+1. Acknowledge any information already collected in the previous state
+2. Explain what will happen in this new state (if appropriate)
+3. Ask for any additional information needed in this state
+4. Be natural and conversational
+5. Don't repeat information the user has already provided
+
+Remember to use the generate_response tool for your final response.
+"""
+        
+        return base_prompt + "\n\n" + transition_guidance
+    
+    def generate_contextual_prompt(self, context: Dict[str, Any]) -> str:
+        """
+        Generate a contextual prompt based on the current state and context.
+        This uses the LLM to create a natural, context-aware message.
+        """
+        try:
+            # Build a simple message for the LLM
+            messages = [
+                {"role": "system", "content": self.system_prompt + "\n\nYou are generating an initial prompt for the user based on the current context. Be natural and conversational."},
+                {"role": "user", "content": f"Generate a contextual prompt for the {self.name} state. Current context: {json.dumps(self._get_relevant_context(context))}"},
+            ]
+            
+            # Make LLM call without tools
+            response = llm_service.chat_completion(
+                messages=messages,
+                model=self.model
+            )
+            
+            if response and response.content:
+                return response.content.strip()
+            
+        except Exception as e:
+            print(f"🔧 SYSTEM: Error generating contextual prompt: {str(e)}")
+        
+        # Fallback to a simple generic prompt if LLM fails
+        return f"Welcome to the {self.name} state. How can I help you?"
+    
+    def _get_relevant_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract relevant context for prompt generation.
+        Filters out internal state machine details.
+        """
+        # Keys to exclude from context sent to LLM
+        exclude_keys = ['conversation_history', 'last_llm_response', 'message', 'error_message']
+        
+        # Create a filtered context
+        filtered_context = {k: v for k, v in context.items() 
+                           if k not in exclude_keys and not isinstance(v, (dict, list)) and v is not None}
+        
+        # Add information about missing fields if available
+        if hasattr(self, 'required_fields'):
+            missing_fields = self._get_missing_fields(context)
+            filtered_context['missing_fields'] = missing_fields
+            
+        return filtered_context
     
     @abstractmethod
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
@@ -122,6 +264,62 @@ Always use the generate_response tool to provide your final response and next ac
             The value from context or the default
         """
         return context.get(key, default)
+        
+    def _get_missing_fields(self, context: Dict[str, Any]) -> list:
+        """Determine which required fields are still missing with field mapping"""
+        if not hasattr(self, 'required_fields'):
+            return []
+            
+        # Define field mappings - what other fields can satisfy a required field
+        field_mappings = {
+            ContextField.IDENTIFYING_FEATURES.value: [
+                'distinctive_features', 'has_collar', 'has_tags', 'has_microchip'
+            ],
+            ContextField.OWNER_CONTACT.value: [
+                # If both owner_name and owner_phone exist, owner_contact is satisfied
+                ('owner_name', 'owner_phone'),
+                'contact_info',
+                'phone_number',
+                'email'
+            ],
+            ContextField.ANIMAL_DESCRIPTION.value: [
+                'animal_color', 'breed', 'animal_size', 'animal_weight'
+            ],
+            ContextField.ANIMAL_CONDITION.value: [
+                'condition', 'health_status', 'severity'
+            ]
+        }
+        
+        missing = []
+        
+        # Check each required field with mapping for related fields
+        for field in self.required_fields:
+            # Check if the field itself exists
+            if context.get(field):
+                continue
+                
+            # Check if any mapped fields exist that would satisfy this requirement
+            if field in field_mappings:
+                # Check each possible mapping
+                field_satisfied = False
+                for mapping in field_mappings[field]:
+                    # Handle tuple case (all fields in tuple must exist)
+                    if isinstance(mapping, tuple):
+                        if all(context.get(m) for m in mapping):
+                            field_satisfied = True
+                            break
+                    # Handle single field case
+                    elif context.get(mapping):
+                        field_satisfied = True
+                        break
+                        
+                if field_satisfied:
+                    continue
+            
+            # If we get here, the field is missing
+            missing.append(field)
+                
+        return missing
     
     def _build_messages(self, user_input: str, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """Build message history for LLM"""
@@ -177,11 +375,105 @@ Always use the generate_response tool to provide your final response and next ac
         
         return "; ".join(info_parts)
     
+    def _debug_context(self, context: Dict[str, Any], label: str) -> None:
+        """Print debug information about the current context"""
+        # Create a filtered version of context for debugging
+        debug_context = {k: v for k, v in context.items() 
+                        if k not in ['conversation_history', 'last_llm_response'] 
+                        and not isinstance(v, (dict, list)) and v is not None}
+        
+        print(f"🔧 CONTEXT DEBUG [{label}] State: {self.name} - {json.dumps(debug_context, indent=2)}")
+        
+        # If we have required fields, show which ones are missing
+        if hasattr(self, 'required_fields'):
+            missing = self._get_missing_fields(context)
+            if missing:
+                print(f"🔧 MISSING FIELDS: {', '.join(missing)}")
+            else:
+                print(f"🔧 ALL REQUIRED FIELDS COLLECTED")
+                
+            # Show what information we're going to ask for next
+            if missing:
+                next_field = missing[0]
+                print(f"🔧 NEXT FIELD TO COLLECT: {next_field}")
+            else:
+                print(f"🔧 READY TO TRANSITION TO NEXT STATE")
+                
+    def _enhance_system_prompt_with_context(self, base_prompt: str, context: Dict[str, Any]) -> str:
+        """Enhance the system prompt with context information"""
+        # Add information about what we already know
+        prompt = base_prompt + "\n\n===== CURRENT CONTEXT INFORMATION =====\n"
+        
+        # Add progress bar if applicable
+        if hasattr(self, 'required_fields'):
+            progress_bar = self.generate_progress_bar(context)
+            if progress_bar:
+                prompt += f"\n{progress_bar}\n"
+        
+        # Add known information
+        known_info = []
+        for key, value in context.items():
+            if key not in ['conversation_history', 'last_llm_response', 'message', 'error_message'] \
+               and not isinstance(value, (dict, list)) and value is not None:
+                known_info.append(f"- {key}: {value}")
+        
+        if known_info:
+            prompt += "\nKnown Information:\n" + "\n".join(known_info) + "\n"
+        
+        # Add information about missing fields if this state has required fields
+        if hasattr(self, 'required_fields'):
+            missing_fields = self._get_missing_fields(context)
+            if missing_fields:
+                prompt += "\nMissing Information (collect in this order):\n" + "\n".join([f"- {field}" for field in missing_fields]) + "\n"
+            else:
+                prompt += "\nAll required information has been collected.\n"
+                
+        prompt += "\n===== END CONTEXT INFORMATION =====\n"
+        return prompt
+        
+    def generate_progress_bar(self, context: Dict[str, Any]) -> str:
+        """Generate a progress bar showing completion status"""
+        if not hasattr(self, 'required_fields') or not self.required_fields:
+            return ""
+            
+        # Calculate progress
+        total_fields = len(self.required_fields)
+        missing_fields = self._get_missing_fields(context)
+        completed_fields = total_fields - len(missing_fields)
+        progress_percent = int((completed_fields / total_fields) * 100)
+        
+        # Create progress bar
+        return f"[Progress: {progress_percent}% - Step {completed_fields + 1 if completed_fields < total_fields else total_fields} of {total_fields}]"
+        
+    def generate_acknowledgment(self, context: Dict[str, Any]) -> str:
+        """Generate an acknowledgment of information already provided"""
+        acknowledgment = ""
+        
+        # Add animal type and name if available
+        if context.get('animal_type'):
+            pet_type = context.get('animal_type')
+            pet_name = context.get('animal_name', '')
+            
+            if pet_name:
+                acknowledgment += f"I understand you're looking for your {pet_type} named {pet_name}. "
+            else:
+                acknowledgment += f"I understand you're looking for your {pet_type}. "
+                
+        # Add other acknowledgments based on context
+        
+        return acknowledgment
+    
     def process_input_with_llm(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         """Process input using LLM with appropriate tools"""
         try:
+            # Debug context information before LLM call
+            self._debug_context(context, "Before LLM call")
+            
             # Build message history
             messages = self._build_messages(user_input, context)
+            
+            # Add enhanced context information to system prompt
+            messages[0]["content"] = self._enhance_system_prompt_with_context(messages[0]["content"], context)
             
             # Get tools for current state
             tools = tool_manager.get_tools_for_state(self.name)
@@ -229,14 +521,26 @@ Always use the generate_response tool to provide your final response and next ac
                 'timestamp': datetime.now().isoformat()
             }
             
-            # Store the final response message for the state machine (only if we got one from tools)
-            if final_response and final_response.strip():
+            # For transitions, we don't need a response message as the next state's enter method will generate it
+            if next_action == StateResult.TRANSITION and next_state:
+                print(f"🔧 SYSTEM: Transition requested - response will be generated by next state")
+                # Don't set a message - the next state's enter method will generate it
+            # For other actions, store the final response message (only if we got one from tools)
+            elif final_response and final_response.strip():
                 updated_context['message'] = final_response
+                # Print both the system message and what will be shown to the user
                 print(f"🔧 SYSTEM: Using tool-generated response")
+                print(f"🤖 {final_response}")
             else:
-                # If no tool provided a response, acknowledge user input and ask for clarification
-                updated_context['message'] = self._generate_acknowledgment_response(user_input, context)
-                print(f"🔧 SYSTEM: No tool response - using acknowledgment fallback")
+                # If no tool provided a response, use the LLM's direct response if available
+                if response.content and response.content.strip():
+                    updated_context['message'] = response.content.strip()
+                    print(f"🔧 SYSTEM: No tool response - using LLM direct response")
+                    print(f"🤖 {response.content.strip()}")
+                else:
+                    # If no response at all, provide a generic fallback
+                    updated_context['message'] = f"I'm not sure how to respond to '{user_input}'. Could you please provide more details?"
+                    print(f"🔧 SYSTEM: No response available - using generic fallback")
             
             # Debug output for final decision
             if next_state:
@@ -247,11 +551,11 @@ Always use the generate_response tool to provide your final response and next ac
             return next_action, next_state, updated_context
             
         except Exception as e:
-            # Fallback to error handling with acknowledgment
+            # Fallback to error handling
             print(f"🔧 SYSTEM: ERROR in LLM processing: {str(e)} - using fallback")
             updated_context = context.copy()
             updated_context['llm_error'] = str(e)
-            updated_context['message'] = self._generate_acknowledgment_response(user_input, context, has_error=True)
+            updated_context['message'] = f"I apologize, but I'm having some technical difficulties processing your request. Could you please try again or rephrase your question?"
             print(f"🔧 SYSTEM: Staying in state '{self.name}' due to error")
             return StateResult.CONTINUE, None, updated_context
     
@@ -265,6 +569,8 @@ Always use the generate_response tool to provide your final response and next ac
         try:
             if tool_name == "analyze_request":
                 return self._handle_animal_request_analysis(args, context)
+            elif tool_name == "update_context":
+                return self._handle_update_context(args, context)
             elif tool_name == "parse_datetime_request":
                 return self._handle_datetime_parsing(args, context)
             elif tool_name == "generate_response":
@@ -275,21 +581,69 @@ Always use the generate_response tool to provide your final response and next ac
         except Exception as e:
             print(f"🔧 SYSTEM: Error processing tool '{tool_name}': {str(e)}")
             return None
+            
+    def _handle_update_context(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle context updates from the LLM"""
+        updates = {}
+        
+        if args.get('context_updates'):
+            # Get the raw updates from the LLM
+            raw_updates = args['context_updates']
+            
+            # Normalize all field names using the ContextField enum
+            normalized_updates = {}
+            for key, value in raw_updates.items():
+                # Convert the key to its canonical form
+                canonical_key = ContextField.normalize_field(key)
+                normalized_updates[canonical_key] = value
+            
+            # Apply any special handling or derived values
+            self._apply_derived_values(normalized_updates)
+            
+            updates = normalized_updates
+            print(f"🔧 SYSTEM: LLM updated context with {len(updates)} key(s): {list(updates.keys())}")
+        
+        return {'context_updates': updates}
+        
+    def _apply_derived_values(self, updates: Dict[str, Any]) -> None:
+        """Apply any special handling or derived values to context updates"""
+        # Example: If we have condition='coughing up blood', set animal_condition='critical'
+        if updates.get(ContextField.CONDITION.value) == 'coughing up blood':
+            updates[ContextField.ANIMAL_CONDITION.value] = 'critical'
+            
+        # Example: If we have severity='high', set animal_condition='critical'
+        if updates.get(ContextField.SEVERITY.value) == 'high':
+            updates[ContextField.ANIMAL_CONDITION.value] = 'critical'
+            
+        # Example: If we have emergency_status='critical', set animal_condition='critical'
+        if updates.get(ContextField.EMERGENCY_STATUS.value) == 'critical':
+            updates[ContextField.ANIMAL_CONDITION.value] = 'critical'
     
     def _handle_animal_request_analysis(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle animal control request analysis"""
         updates = {}
         
-        if args.get('intent') and args.get('confidence', 0) > 0.7:
-            updates['detected_intent'] = args['intent']
-        if args.get('animal_type'):
-            updates['animal_type'] = args['animal_type']
-        if args.get('service_type'):
-            updates['service_type'] = args['service_type']
-        if args.get('location'):
-            updates['location'] = args['location']
-        if args.get('urgency'):
-            updates['urgency_level'] = args['urgency']
+        # Map arguments to context fields using the enum
+        field_mapping = {
+            'intent': ContextField.DETECTED_INTENT.value,
+            'animal_type': ContextField.ANIMAL_TYPE.value,
+            'service_type': ContextField.SERVICE_TYPE.value,
+            'location': ContextField.LOCATION.value,
+            'urgency': ContextField.URGENCY_LEVEL.value
+        }
+        
+        # Only add fields that exist in the args and have sufficient confidence
+        for arg_name, context_field in field_mapping.items():
+            if arg_name == 'intent':
+                # Special case for intent which requires confidence check
+                if args.get(arg_name) and args.get('confidence', 0) > 0.7:
+                    updates[context_field] = args[arg_name]
+            elif args.get(arg_name):
+                updates[context_field] = args[arg_name]
+        
+        # Apply any special handling or derived values
+        if updates.get(ContextField.URGENCY_LEVEL.value) == 'emergency':
+            updates[ContextField.ANIMAL_CONDITION.value] = 'critical'
         
         return {'context_updates': updates}
     
@@ -297,58 +651,73 @@ Always use the generate_response tool to provide your final response and next ac
         """Handle datetime parsing"""
         updates = {}
         
-        if args.get('date') and args.get('confidence', 0) > 0.7:
-            updates['parsed_date'] = args['date']
-        if args.get('time') and args.get('confidence', 0) > 0.7:
-            updates['parsed_time'] = args['time']
-        if args.get('time_of_day'):
-            updates['preferred_time_of_day'] = args['time_of_day']
-        if args.get('relative_reference'):
-            updates['relative_time_ref'] = args['relative_reference']
-        if args.get('flexibility'):
-            updates['time_flexibility'] = args['flexibility']
+        # Map arguments to context fields using the enum
+        field_mapping = {
+            'date': 'parsed_date',  # Not in enum yet
+            'time': 'parsed_time',  # Not in enum yet
+            'time_of_day': 'preferred_time_of_day',  # Not in enum yet
+            'relative_reference': 'relative_time_ref',  # Not in enum yet
+            'flexibility': 'time_flexibility'  # Not in enum yet
+        }
+        
+        # Only add fields that exist in the args and have sufficient confidence
+        for arg_name, context_field in field_mapping.items():
+            if arg_name in ['date', 'time']:
+                # Special case for date/time which requires confidence check
+                if args.get(arg_name) and args.get('confidence', 0) > 0.7:
+                    updates[context_field] = args[arg_name]
+            elif args.get(arg_name):
+                updates[context_field] = args[arg_name]
+        
+        # If we have both date and time, try to create a datetime object
+        if 'parsed_date' in updates and 'parsed_time' in updates:
+            try:
+                date_str = updates['parsed_date']
+                time_str = updates['parsed_time']
+                datetime_str = f"{date_str} {time_str}"
+                parsed_datetime = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+                updates[ContextField.SELECTED_DATE.value] = parsed_datetime
+            except ValueError:
+                pass
         
         return {'context_updates': updates}
     
     def _handle_response_generation(self, args: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle response generation"""
+        # Get the basic response information
+        response = args.get('response', '')
+        next_action = args.get('next_action', 'continue')
+        
+        # Get any context updates and normalize them
+        raw_updates = args.get('context_updates', {})
+        normalized_updates = {}
+        
+        # Normalize all field names using the ContextField enum
+        for key, value in raw_updates.items():
+            # Convert the key to its canonical form
+            canonical_key = ContextField.normalize_field(key)
+            normalized_updates[canonical_key] = value
+        
+        # Apply any special handling or derived values
+        self._apply_derived_values(normalized_updates)
+        
+        # Build the result
         result = {
-            'response': args.get('response', ''),
-            'next_action': args.get('next_action', 'continue'),
-            'context_updates': args.get('context_updates', {})
+            'response': response,
+            'next_action': next_action,
+            'context_updates': normalized_updates
         }
         
+        # Add next_state if provided
         if args.get('next_state'):
             result['next_state'] = args['next_state']
+            
+            # If transitioning to a specific state, add auto-advance flag
+            # This helps with skipping states when we have all required information
+            if next_action == 'transition':
+                # Add a flag to check for auto-advancement in the next state
+                normalized_updates[ContextField.AUTO_ADVANCE.value] = True
         
         return result
     
-    def _generate_acknowledgment_response(self, user_input: str, context: Dict[str, Any], has_error: bool = False) -> str:
-        """Generate a polite acknowledgment response that asks for clarification based on current state"""
-        current_state = self.name
-        
-        # Acknowledge what the user said
-        acknowledgment = f"I understand you said '{user_input.strip()}'. "
-        
-        if has_error:
-            acknowledgment += "I'm having some technical difficulties, but I'd still like to help you. "
-        
-        # State-specific clarification requests for animal control
-        if current_state == "GREETING":
-            clarification = "How can I assist you with animal control services today? I can help with reporting lost or found animals, emergency cases, pet surrenders, or providing general information."
-        elif current_state == "EMERGENCY_CASE":
-            clarification = "For emergency animal situations, could you please provide details about the animal and its location?"
-        elif current_state == "REPORT_FOUND":
-            clarification = "To report a found animal, could you please describe the animal and where you found it?"
-        elif current_state == "REPORT_LOST":
-            clarification = "I'm sorry to hear about your lost pet. Could you please describe your pet and where it was last seen?"
-        elif current_state == "PET_SURRENDER":
-            clarification = "For pet surrenders, could you tell me about the animal you're considering surrendering?"
-        elif current_state == "SCHEDULE_SURRENDER":
-            clarification = "When would be a convenient time for you to schedule the surrender?"
-        elif current_state == "GENERAL_INFO":
-            clarification = "What specific information about animal control services are you looking for?"
-        else:
-            clarification = "Could you please provide more details so I can better assist you with your animal control needs?"
-        
-        return acknowledgment + clarification
+    # Removed hardcoded acknowledgment generation - now handled by LLM
