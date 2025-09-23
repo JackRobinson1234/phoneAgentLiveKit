@@ -4,7 +4,6 @@ from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 import openai
 from dotenv import load_dotenv
-from llm_eval import identify_llm_executor
 
 from settings import LLM_CONFIG, AVAILABLE_MODELS
 

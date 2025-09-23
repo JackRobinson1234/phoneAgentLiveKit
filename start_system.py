@@ -10,6 +10,10 @@ import signal
 import subprocess
 import time
 import socket
+import threading
+import requests
+import json
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -20,6 +24,117 @@ API_PORT = int(os.environ.get("PORT", 5001))
 API_SCRIPT = "animal_control_api.py"
 API_HOST = '0.0.0.0'
 DEBUG_MODE = os.environ.get("DEBUG", "False").lower() == "true"
+API_BASE_URL = f"http://localhost:{API_PORT}"
+
+class ConsoleChatClient:
+    """Console-based chat client for interacting with the Animal Control API"""
+    
+    def __init__(self):
+        self.conversation_id = None
+        self.running = False
+    
+    def start_conversation(self):
+        """Start a new conversation with the API"""
+        try:
+            response = requests.post(f"{API_BASE_URL}/conversations")
+            data = response.json()
+            
+            # Store conversation ID
+            self.conversation_id = data['conversation_id']
+            
+            # Display initial greeting
+            initial_greeting = data.get('message', '')
+            if initial_greeting:
+                print(f"\nAgent: {initial_greeting}\n")
+            else:
+                print("\nAgent: Hello! I'm here to help with animal control services. How can I assist you today?\n")
+                
+            return True
+        except Exception as e:
+            print(f"\nError starting conversation: {e}")
+            print("Make sure the API server is running.\n")
+            return False
+    
+    def send_message(self, message):
+        """Send a message to the API and get response"""
+        if not self.conversation_id:
+            print("No active conversation. Please start a new conversation first.")
+            return False
+            
+        try:
+            response = requests.post(
+                f"{API_BASE_URL}/conversations/{self.conversation_id}/messages",
+                json={'message': message}
+            )
+            data = response.json()
+            
+            # Display agent's response
+            agent_response = data.get('message', '')
+            if agent_response:
+                print(f"\nAgent: {agent_response}\n")
+            else:
+                print("\nAgent: I'm sorry, I didn't understand that. Could you please rephrase?\n")
+                
+            return True
+        except Exception as e:
+            print(f"\nError sending message: {e}")
+            return False
+    
+    def end_conversation(self):
+        """End the conversation"""
+        if not self.conversation_id:
+            return
+            
+        try:
+            response = requests.delete(f"{API_BASE_URL}/conversations/{self.conversation_id}")
+            data = response.json()
+            
+            # Display end message
+            end_message = data.get('message', 'Thank you for using Animal Control Services. Goodbye!')
+            print(f"\nAgent: {end_message}\n")
+            
+            self.conversation_id = None
+        except Exception as e:
+            print(f"\nError ending conversation: {e}")
+    
+    def run_chat_loop(self):
+        """Run the main chat loop"""
+        print("\n=== Animal Control Chat Interface ===")
+        print("Type 'exit', 'quit', or 'bye' to end the conversation")
+        print("Starting conversation...")
+        
+        if not self.start_conversation():
+            return
+        
+        self.running = True
+        
+        while self.running:
+            try:
+                # Get user input
+                user_input = input("You: ").strip()
+                
+                # Check for exit commands
+                if user_input.lower() in ['exit', 'quit', 'bye', 'goodbye']:
+                    self.end_conversation()
+                    self.running = False
+                    break
+                
+                # Skip empty inputs
+                if not user_input:
+                    continue
+                
+                # Send message to API
+                self.send_message(user_input)
+                
+            except KeyboardInterrupt:
+                print("\nInterrupted by user. Ending conversation...")
+                self.end_conversation()
+                self.running = False
+                break
+            except Exception as e:
+                print(f"\nError in chat loop: {e}")
+                self.running = False
+                break
 
 def is_port_in_use(port):
     """Check if a port is in use"""
@@ -93,6 +208,22 @@ def start_api_server():
     
     return process
 
+def wait_for_api_ready(timeout=30):
+    """Wait for the API server to be ready"""
+    print("Waiting for API server to be ready...")
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.get(f"{API_BASE_URL}/health")
+            if response.status_code == 200:
+                print("API server is ready!")
+                return True
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(1)
+    print("Timed out waiting for API server to be ready")
+    return False
+
 def main():
     """Main function"""
     print("=== Animal Control API System Launcher ===")
@@ -108,13 +239,37 @@ def main():
     # Start the API server
     api_process = start_api_server()
     
-    print("\nAPI server is now running.")
-    print(f"API is available at http://{API_HOST}:{API_PORT}")
-    print("Press Ctrl+C to stop the server.")
+    print(f"\nAPI server starting on http://{API_HOST}:{API_PORT}")
+    
+    # Wait for API server to be ready
+    if not wait_for_api_ready():
+        print("API server failed to start properly. Exiting.")
+        api_process.terminate()
+        sys.exit(1)
+    
+    # Create and start chat client
+    chat_client = ConsoleChatClient()
     
     try:
-        # Keep the script running to show output
-        api_process.wait()
+        # Run the chat loop in the main thread
+        chat_client.run_chat_loop()
+        
+        # After chat loop ends, ask if user wants to stop the server
+        response = input("\nDo you want to stop the API server too? (y/n): ").lower()
+        if response == 'y' or response == 'yes':
+            print("Stopping API server...")
+            api_process.terminate()
+            try:
+                api_process.wait(timeout=3)
+                print("API server stopped.")
+            except subprocess.TimeoutExpired:
+                print("Force killing API server...")
+                api_process.kill()
+                print("API server stopped.")
+        else:
+            print("API server continues to run in the background.")
+            print(f"API is available at http://{API_HOST}:{API_PORT}")
+    
     except KeyboardInterrupt:
         print("\nReceived keyboard interrupt. Shutting down...")
         
