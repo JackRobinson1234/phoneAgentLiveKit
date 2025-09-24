@@ -235,6 +235,11 @@ When users provide ambiguous information, categorize it according to these rules
   Example: "It's running loose in the park" → animal_contained=False
   Example: "We put it in a box" → animal_contained=True
 
+- OWNER_CONTACT: Contact information for the owner of the animal
+  Example: "My phone number is 555-1234" → owner_contact="555-1234"
+  Example: "My email is johndoe@example.com" → owner_contact="johndoe@example.com"
+  Example: "My name is John Doe" → owner_contact="John Doe"
+
 When a response could fit multiple categories, prioritize as follows:
 1. If it describes the species, update animal_type
 2. If it describes injuries or condition, update animal_condition
@@ -311,7 +316,8 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
             ContextField.ANIMAL_TYPE.value,        # Step 1a
             ContextField.ANIMAL_CONDITION.value,   # Step 1b
             ContextField.LOCATION.value,           # Step 1c
-            ContextField.ANIMAL_CONTAINED.value    # Step 1d
+            ContextField.ANIMAL_CONTAINED.value, # Step 1d
+            ContextField.OWNER_CONTACT.value    # Step 1d
         ]
     
     def enter(self, context: Dict[str, Any]) -> str:
