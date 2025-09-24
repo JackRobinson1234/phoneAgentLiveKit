@@ -46,7 +46,11 @@ active_conversations = {}
 def register_twilio_routes(app):
     """Register Twilio webhook routes with the Flask app"""
     
-    @app.route('/webhook/voice/timeout', methods=['POST'])
+    # Define the base URL for webhooks
+    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+    webhook_base = f"{base_url}/webhook"
+    
+    @app.route('/webhook/voice/timeout', methods=['POST', 'GET'])
     def voice_timeout_handler():
         """Handle timeouts when user doesn't respond"""
         try:
@@ -73,7 +77,7 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     language='en-US',
-                    timeout_url='/webhook/voice/timeout',
+                    # Note: timeout_url is not supported by Twilio Gather
                     **DEFAULT_GATHER_PARAMS
                 )
                 
@@ -134,7 +138,7 @@ def register_twilio_routes(app):
                         action='/webhook/voice',
                         method='POST',
                         language='en-US',
-                        timeout_url='/webhook/voice/timeout',  # Redirect to timeout handler if no input
+                        # Note: timeout_url is not supported by Twilio Gather
                         hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                         **DEFAULT_GATHER_PARAMS
                     )
@@ -153,7 +157,7 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     language='en-US',
-                    timeout_url='/webhook/voice/timeout',  # Redirect to timeout handler if no input
+                    # Note: timeout_url is not supported by Twilio Gather
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
@@ -178,7 +182,7 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     language='en-US',
-                    timeout_url='/webhook/voice/timeout',  # Redirect to timeout handler if no input
+                    # Note: timeout_url is not supported by Twilio Gather
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
@@ -204,7 +208,7 @@ def register_twilio_routes(app):
                 action='/webhook/voice',
                 method='POST',
                 language='en-US',
-                timeout_url='/webhook/voice/timeout',  # Redirect to timeout handler if no input
+                # Note: timeout_url is not supported by Twilio Gather
                 **DEFAULT_GATHER_PARAMS
             )
             gather.say(error_message, voice='Polly.Matthew')

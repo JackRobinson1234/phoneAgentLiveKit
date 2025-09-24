@@ -7,6 +7,10 @@ from agents.llm_animal_control_agent import LLMAnimalControlAgent
 import json
 from twilio_config import DEFAULT_GATHER_PARAMS
 
+# Define the base URL for webhooks
+base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +63,7 @@ def answer_call():
         
         debug_print("SENDING GREETING", f"To caller: {caller_id}, Message: '{initial_greeting[:50]}...'")
         # Add a greeting and wait for user input
-        gather = Gather(input='speech', action='/process_speech', timeout_url='/timeout_handler', language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say(initial_greeting)
         resp.append(gather)
         
@@ -68,7 +72,7 @@ def answer_call():
     else:
         debug_print("CONTINUING CONVERSATION", f"With caller: {caller_id}")
         # Continue existing conversation
-        gather = Gather(input='speech', action='/process_speech', timeout_url='/timeout_handler', language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say("Please continue with your animal control request.")
         resp.append(gather)
     
@@ -124,7 +128,7 @@ def process_speech():
         
         debug_print("SENDING RESPONSE", f"To caller: {caller_id}")
         # Respond to the caller and wait for more input
-        gather = Gather(input='speech', action='/process_speech', timeout_url='/timeout_handler', language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say(response_message)
         resp.append(gather)
         
@@ -139,7 +143,7 @@ def process_speech():
     
     return str(resp)
 
-@app.route("/timeout_handler", methods=['POST'])
+@app.route("/timeout_handler", methods=['POST', 'GET'])
 def timeout_handler():
     """Handle timeouts when user doesn't respond"""
     # Get the caller's phone number
@@ -169,7 +173,7 @@ def timeout_handler():
         gather = Gather(
             input='speech', 
             action='/process_speech',
-            timeout_url='/timeout_handler',
+            # timeout_url removed - not supported by Twilio Gather
             language='en-US',
             **DEFAULT_GATHER_PARAMS
         )
