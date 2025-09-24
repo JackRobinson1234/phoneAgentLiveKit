@@ -89,7 +89,10 @@ def register_twilio_routes(app):
                 agent_response = process_voice_input(caller_number, user_input)
                 debug_print("AGENT RESPONSE", f"Length: {len(agent_response)} chars")
                 
-                # Speak the response and gather more input
+                # First, speak the full response without gathering input
+                response.say(f"<speak><prosody rate='fast'>{agent_response}</prosody></speak>", voice='Polly.Matthew')
+                
+                # Then gather input after the message completes
                 gather = Gather(
                     input='speech dtmf',
                     action='/webhook/voice',
@@ -98,8 +101,8 @@ def register_twilio_routes(app):
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
-                # Add voice speed control with SSML
-                gather.say(f"<speak><prosody rate='fast'>{agent_response}</prosody></speak>", voice='Polly.Matthew')
+                # Add a short prompt to indicate it's time for user input
+                gather.say("<speak><prosody rate='fast'>How can I help you further?</prosody></speak>", voice='Polly.Matthew')
                 response.append(gather)
                 
                 # Only if Gather times out (user doesn't say anything), this will execute
@@ -113,7 +116,10 @@ def register_twilio_routes(app):
                 greeting = start_voice_conversation(caller_number)
                 debug_print("GREETING GENERATED", f"Length: {len(greeting)} chars")
                 
-                # Speak greeting and gather input
+                # First, speak the full greeting without gathering input
+                response.say(f"<speak><prosody rate='fast'>{greeting}</prosody></speak>", voice='Polly.Matthew')
+                
+                # Then gather input after the greeting completes
                 gather = Gather(
                     input='speech dtmf',
                     action='/webhook/voice',
@@ -122,8 +128,8 @@ def register_twilio_routes(app):
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
-                # Add voice speed control with SSML
-                gather.say(f"<speak><prosody rate='fast'>{greeting}</prosody></speak>", voice='Polly.Matthew')
+                # Add a short prompt to indicate it's time for user input
+                gather.say("<speak><prosody rate='fast'>How can I help you?</prosody></speak>", voice='Polly.Matthew')
                 response.append(gather)
                 
                 # Only if Gather times out (user doesn't say anything), this will execute
@@ -138,7 +144,10 @@ def register_twilio_routes(app):
             # Create a more helpful error message with SSML for better voice quality
             error_message = "<speak><prosody rate='fast'>I'm having trouble understanding that. Could you please try again or call back later if the problem continues?</prosody></speak>"
             
-            # Add a Gather to allow the user to try again immediately
+            # First speak the error message
+            response.say(error_message, voice='Polly.Matthew')
+            
+            # Then add a Gather to allow the user to try again
             gather = Gather(
                 input='speech dtmf',
                 action='/webhook/voice',
@@ -146,7 +155,7 @@ def register_twilio_routes(app):
                 language='en-US',
                 **DEFAULT_GATHER_PARAMS
             )
-            gather.say(error_message, voice='Polly.Matthew')
+            gather.say("<speak><prosody rate='fast'>Please tell me how I can help you.</prosody></speak>", voice='Polly.Matthew')
             response.append(gather)
             
             # Only hang up if the user doesn't respond to the gather

@@ -588,7 +588,7 @@ Remember to use the generate_response tool for your final response.
             
             # Debug output for final decision
             if next_state:
-                print(f"🔧 SYSTEM: State transition requested: '{self.name}' → '{next_state}'")
+                print(f"🔧 SYSTEM: '{self.name}' → '{next_state}'")
             else:
                 print(f"🔧 SYSTEM: Staying in current state '{self.name}' (action: {next_action.name})")
             
