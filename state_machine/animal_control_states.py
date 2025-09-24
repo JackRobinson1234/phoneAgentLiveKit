@@ -336,15 +336,8 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
                 'contained': updated_context.get('animal_contained', 'Unknown'),
                 'timestamp': datetime.now().isoformat()
             }
-            
-            # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about this emergency case. Let me summarize what we have so far."           
-            
+                        
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        
-        # Otherwise, use the LLM-generated response
-        # Do not override with hardcoded prompts - let the LLM handle the conversation flow
-        # The message should already be set by process_input_with_llm
         
         return StateResult.CONTINUE, None, updated_context
     
@@ -874,7 +867,10 @@ VOICE OPTIMIZATION REQUIREMENTS:
 4. Focus on the most important information only
 5. Break complex topics into simple, digestible points
 
-CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember."""
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
+CRITICAL: Clearly state this is the end of the call. Tell the user their case has been submitted and what will happen next.
+CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to signal the end of the conversation.
+"""
         
         super().__init__("GENERAL_INFO", system_prompt)
     
@@ -921,7 +917,9 @@ Your tasks:
 3. Provide appropriate next steps based on the case type
 4. Use generate_response with appropriate next_action
 
-CRITICAL: Ensure all necessary information has been collected and provide clear next steps."""
+CRITICAL: Clearly state this is the end of the call. Tell the user their case has been submitted and what will happen next.
+CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to signal the end of the conversation.
+"""
         
         super().__init__("CASE_CONFIRMATION", system_prompt)
     
@@ -957,14 +955,22 @@ class LLMCaseCompleteState(AnimalControlState):
 
 Current State: CASE_COMPLETE - Confirming case submission and providing next steps
 
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
+
 Your tasks:
 1. Confirm the case has been submitted
 2. Provide the case ID for reference
-3. Explain what happens next
-4. Ask if there's anything else the user needs
-5. Use generate_response with appropriate next_action
+3. Explain what happens next briefly
+4. End the call with a clear goodbye message
 
-CRITICAL: Ensure the user knows their case has been submitted and what to expect next."""
+CRITICAL: Clearly state this is the end of the call. Tell the user their case has been submitted and what will happen next.
+CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to signal the end of the conversation.
+CRITICAL: Do not ask if there's anything else the user needs - this is the end of the call."""
         
         super().__init__("CASE_COMPLETE", system_prompt)
     
@@ -974,85 +980,48 @@ CRITICAL: Ensure the user knows their case has been submitted and what to expect
         case_id = context.get('case_id', 'UNKNOWN-ID')
         
         if case_type == 'emergency':
-            message = f"""✅ Your emergency animal case has been submitted successfully!
+            message = f"""✅ Your emergency animal case has been submitted successfully! Case ID: {case_id}.
 
-Case ID: {case_id}
+An animal control officer will be dispatched to the location immediately. For urgent assistance, call our emergency hotline at 555-ANIMAL.
 
-What happens next:
-- An animal control officer will be dispatched to the location
-- For immediate assistance, please call our emergency hotline at 555-ANIMAL
-- You may receive a follow-up call for additional information
-
-Thank you for reporting this emergency. Is there anything else I can help you with today?"""
+This concludes our call. Thank you for calling Animal Control Services. Goodbye."""
 
         elif case_type == 'found':
-            message = f"""✅ Your found animal report has been submitted successfully!
+            message = f"""✅ Your found animal report has been submitted successfully! Case ID: {case_id}.
 
-Case ID: {case_id}
+An officer will contact you within 24 hours. We'll check for matching lost pet reports and provide guidance if you're keeping the animal temporarily.
 
-What happens next:
-- We'll check our lost pet reports for potential matches
-- An officer will contact you within 24 hours
-- If you can keep the animal temporarily, we'll provide guidance on care
-
-Thank you for helping this animal. Is there anything else I can help you with today?"""
+This concludes our call. Thank you for calling Animal Control Services. Goodbye."""
 
         elif case_type == 'lost':
-            message = f"""✅ Your lost pet report has been submitted successfully!
+            message = f"""✅ Your lost pet report has been submitted successfully! Case ID: {case_id}.
 
-Case ID: {case_id}
-VOICE OPTIMIZATION REQUIREMENTS:
-1. Keep all responses under 3 sentences when possible
-2. Use simple, direct language suitable for voice
-3. Avoid long lists or complex explanations
-4. Focus on the most important information only
-5. Break complex topics into simple, digestible points
+We'll check our found animal reports and alert our field officers to look for your pet. We recommend also posting on local lost pet websites and social media.
 
-CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
-What happens next:
-- We'll check our found animal reports for potential matches
-- Our field officers will be alerted to look for your pet
-- We recommend posting on local lost pet websites and social media
-- We'll contact you if we find a potential match
-
-We hope your pet returns home soon. Is there anything else I can help you with today?"""
+This concludes our call. Thank you for calling Animal Control Services. Goodbye."""
 
         elif case_type == 'surrender':
             appointment_date = case_details.get('appointment_date', 'Not scheduled')
-            message = f"""✅ Your pet surrender appointment has been confirmed!
+            message = f"""✅ Your pet surrender appointment has been confirmed! Case ID: {case_id}, Appointment: {appointment_date}.
 
-Case ID: {case_id}
-Appointment: {appointment_date}
+Please bring your photo ID and any pet medical records or supplies you wish to donate. If you need to reschedule, call 555-SHELTER at least 24 hours in advance.
 
-What to bring:
-- Your photo ID
-- Any medical records for the pet
-- Any supplies or favorite toys you wish to donate with the pet
-
-If you need to reschedule, please call 555-SHELTER at least 24 hours in advance.
-
-Is there anything else I can help you with today?"""
+This concludes our call. Thank you for calling Animal Control Services. Goodbye."""
 
         else:
-            message = f"""✅ Your case has been submitted successfully!
+            message = f"""✅ Your case has been submitted successfully! Case ID: {case_id}.
 
-Case ID: {case_id}
+We'll process your request and contact you if we need additional information.
 
-Thank you for contacting animal control. Is there anything else I can help you with today?"""
+This concludes our call. Thank you for calling Animal Control Services. Goodbye."""
             
         return message
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
-        result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # Check if user wants another service
-        user_input_lower = user_input.lower()
-        if any(term in user_input_lower for term in ['yes', 'another', 'something else', 'help']):
-            return StateResult.TRANSITION, "DETERMINE_SERVICE", updated_context
-        elif any(term in user_input_lower for term in ['no', 'that\'s all', 'nothing else', 'bye', 'goodbye']):
-            return StateResult.COMPLETE, None, updated_context
-        
-        return result, next_state, updated_context
+        # Since this is the end of the call, we don't need to process further input
+        # Just return the same state and context
+        return StateResult.CONTINUE, None, context
+
     
     def enter(self, context: Dict[str, Any]) -> str:
         return "Hello! Welcome to Animal Control Services. How can I assist you today?"
