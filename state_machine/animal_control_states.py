@@ -51,7 +51,14 @@ When generating direct responses (not transitions):
   
   What would you like assistance with today?
   ```
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
 
 CRITICAL: Use update_context tool to extract ANY information the user provides, even if they're just in the greeting state.
@@ -244,6 +251,14 @@ VALID STATE TRANSITIONS:
 When all required information is collected, transition to CASE_CONFIRMATION state using:
 next_action='transition', next_state='CASE_CONFIRMATION'
 
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
+
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 DO NOT use any state names that aren't in this list:
 - GREETING
 - EMERGENCY_CASE
@@ -281,6 +296,14 @@ When responding to the user:
 5. Begin gathering missing information in a focused, efficient manner
 6. Don't ask for information they've already provided
 
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
+
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 Your tone should be urgent but reassuring, focusing on getting the critical information as quickly as possible."""
         }
         
@@ -388,7 +411,14 @@ When responding to the user:
 3. Explain briefly that you'll help them create a found animal report
 4. Begin gathering missing information in a conversational way
 5. Don't ask for information they've already provided
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 Your tone should be appreciative and helpful while efficiently collecting the needed information."""
         }
         
@@ -498,7 +528,14 @@ Your tasks:
    - Only after acknowledging recent information, ask for the next piece of information
    - DO NOT include any step indicators or progress information in your responses
    - Be empathetic since this is about a lost pet
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 5. Use generate_response with appropriate next_action
 
 CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
@@ -647,7 +684,14 @@ When a response could fit multiple categories, prioritize as follows:
 Example of ambiguous response: "I can't keep him because he bites"
 - Primary categorization: surrender_reason="dog bites"
 - Secondary categorization: behavioral_issues="biting behavior"
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
 
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
@@ -722,7 +766,14 @@ Your tasks:
 2. Help user select a convenient time
 3. Confirm the appointment details
 4. Use generate_response with appropriate next_action
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: Ensure the user understands the surrender process and what to bring."""
         
         super().__init__("SCHEDULE_SURRENDER", system_prompt)
@@ -808,7 +859,14 @@ Your tasks:
 2. Provide information about adoption, licensing, wildlife, etc.
 3. Direct users to specific services if needed
 4. Use generate_response with appropriate next_action
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: Be informative and helpful, directing users to specific services when appropriate.
 VOICE OPTIMIZATION REQUIREMENTS:
 1. Keep all responses under 3 sentences when possible
@@ -850,7 +908,14 @@ class LLMCaseConfirmationState(AnimalControlState):
         system_prompt = """You are AnimalControlBot confirming case details with the user.
 
 Current State: CASE_CONFIRMATION - Confirming case details and providing next steps
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 Your tasks:
 1. Summarize the collected information
 2. Confirm details with the user
@@ -937,7 +1002,14 @@ Thank you for helping this animal. Is there anything else I can help you with to
             message = f"""✅ Your lost pet report has been submitted successfully!
 
 Case ID: {case_id}
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 What happens next:
 - We'll check our found animal reports for potential matches
 - Our field officers will be alerted to look for your pet
@@ -1060,7 +1132,14 @@ Your tasks:
 When the user wants to start over, set next_action="transition" and next_state="GREETING".
 When the user wants to try again, set next_action="transition" and next_state equal to the previous_state in context.
 When the user wants to end the conversation, set next_action="complete".
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
 
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response."""
         
         super().__init__("ERROR_HANDLING", system_prompt)
