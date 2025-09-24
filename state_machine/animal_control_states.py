@@ -360,7 +360,7 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
-        return [field for field in self.required_fields if not context.get(field)]
+        return [field for field in self.required_fields if field not in context]
             
     def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
         """Determine the next state based on context information"""
@@ -477,7 +477,7 @@ Your tone should be appreciative and helpful while efficiently collecting the ne
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
-        return [field for field in self.required_fields if not context.get(field)]
+        return [field for field in self.required_fields if field not in context]
     
     def _get_prompt_for_field(self, field: str, context: Dict[str, Any]) -> str:
         """Get the appropriate prompt for the next required field"""
@@ -632,8 +632,7 @@ CRITICAL: NEVER start your response with generic phrases like "I understand you'
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
-        return [field for field in self.required_fields if not context.get(field)]
-    
+        return [field for field in self.required_fields if field not in context]    
     # Removed hardcoded _get_prompt_for_field method - now handled by LLM
 
 class LLMPetSurrenderState(AnimalControlState):
@@ -758,7 +757,7 @@ CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept mult
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
-        return [field for field in self.required_fields if not context.get(field)]
+        return [field for field in self.required_fields if field not in context]
     
     # Removed hardcoded _get_prompt_for_field method - now handled by LLM
 
