@@ -18,7 +18,6 @@ Available services:
 2. Report Found Animal
 3. Report Lost Animal
 4. Schedule Pet Surrender
-5. General Information
 
 Your tasks:
 1. First, use update_context tool to extract any information provided by the user
@@ -47,7 +46,6 @@ When generating direct responses (not transitions):
   2. Help with found animals
   3. Lost pet reporting
   4. Pet surrender scheduling
-  5. General information about our services
   
   What would you like assistance with today?
   ```
@@ -71,9 +69,7 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
             "EMERGENCY_CASE": ['animal_type', 'animal_condition', 'location'],
             "REPORT_FOUND": ['animal_type', 'location_found'],
             "REPORT_LOST": ['animal_type', 'last_seen_location'],
-            "PET_SURRENDER": ['animal_type', 'surrender_reason'],
-            "GENERAL_INFO": ['info_topic']
-        }
+            "PET_SURRENDER": ['animal_type', 'surrender_reason']        }
     
     # Using the base class implementation for dynamic prompt generation
     
@@ -144,40 +140,6 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
                 return StateResult.TRANSITION, service_map[selection], updated_context
         except ValueError:
             pass
-        
-        # Handle service type transitions based on detected intent or service_type
-        service_type = updated_context.get('service_type')
-        detected_intent = updated_context.get('detected_intent')
-        
-        # Only transition for specific service requests, not for greetings or general info
-        if detected_intent in ['greeting', 'info', 'other'] or not detected_intent:
-            # Stay in the GREETING state for greetings and general messages
-            return StateResult.TRANSITION, "GENERAL_INFO", updated_context
-            
-        # Only transition for specific service types
-        if service_type == 'emergency' or detected_intent == 'emergency':
-            return StateResult.TRANSITION, "EMERGENCY_CASE", updated_context
-        elif service_type == 'found' or detected_intent == 'found':
-            return StateResult.TRANSITION, "REPORT_FOUND", updated_context
-        elif service_type == 'lost' or detected_intent == 'lost':
-            return StateResult.TRANSITION, "REPORT_LOST", updated_context
-        elif service_type == 'surrender' or detected_intent == 'surrender':
-            return StateResult.TRANSITION, "PET_SURRENDER", updated_context
-        
-        # Check for keywords in user input as a fallback
-        user_input_lower = user_input.lower()
-        if any(term in user_input_lower for term in ['emergency', 'injured', 'hurt', 'sick', 'abuse']):
-            return StateResult.TRANSITION, "EMERGENCY_CASE", updated_context
-        elif any(term in user_input_lower for term in ['found', 'stray']):
-            return StateResult.TRANSITION, "REPORT_FOUND", updated_context
-        elif any(term in user_input_lower for term in ['lost', 'missing']):
-            return StateResult.TRANSITION, "REPORT_LOST", updated_context
-        elif any(term in user_input_lower for term in ['surrender', 'give up', 'rehome']):
-            return StateResult.TRANSITION, "PET_SURRENDER", updated_context
-        # Temporarily disabled GENERAL_INFO transitions
-        # elif any(term in user_input_lower for term in ['information', 'services', 'hours', 'locations', 'adoption', 'licensing']):
-        #     # Only transition to GENERAL_INFO for specific information requests
-        #     return StateResult.TRANSITION, "GENERAL_INFO", updated_context
         
         return result, next_state, updated_context
 
@@ -270,7 +232,6 @@ DO NOT use any state names that aren't in this list:
 - REPORT_LOST
 - PET_SURRENDER
 - SCHEDULE_SURRENDER
-- GENERAL_INFO
 - CASE_CONFIRMATION
 - CASE_COMPLETE
 - ERROR_HANDLING
@@ -762,7 +723,7 @@ CRITICAL: Clearly state this is the end of the call. Tell the user their case ha
 CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to signal the end of the conversation.
 """
         
-        super().__init__("GENERAL_INFO", system_prompt)
+        super().__init__("FO", system_prompt)
     
     def enter(self, context: Dict[str, Any]) -> str:
         """Generate a response using the LLM when entering the state"""

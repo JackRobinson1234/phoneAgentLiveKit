@@ -8,7 +8,6 @@ class StateEnum(Enum):
     REPORT_LOST = "REPORT_LOST"
     PET_SURRENDER = "PET_SURRENDER"
     SCHEDULE_SURRENDER = "SCHEDULE_SURRENDER"
-    GENERAL_INFO = "GENERAL_INFO"
     CASE_CONFIRMATION = "CASE_CONFIRMATION"
     CASE_COMPLETE = "CASE_COMPLETE"
     ERROR_HANDLING = "ERROR_HANDLING"
@@ -34,7 +33,6 @@ class StateEnum(Enum):
                 cls.REPORT_FOUND.value,
                 cls.REPORT_LOST.value,
                 cls.PET_SURRENDER.value,
-                cls.GENERAL_INFO.value,
                 cls.ERROR_HANDLING.value
             ],
             cls.EMERGENCY_CASE.value: [
@@ -54,10 +52,6 @@ class StateEnum(Enum):
                 cls.ERROR_HANDLING.value
             ],
             cls.SCHEDULE_SURRENDER.value: [
-                cls.CASE_CONFIRMATION.value,
-                cls.ERROR_HANDLING.value
-            ],
-            cls.GENERAL_INFO.value: [
                 cls.CASE_CONFIRMATION.value,
                 cls.ERROR_HANDLING.value
             ],

@@ -169,11 +169,6 @@ class LLMAnimalControlAgent:
                 'id': 'surrender',
                 'name': 'Schedule Pet Surrender',
                 'description': 'Arrange to surrender a pet to animal control'
-            },
-            {
-                'id': 'info',
-                'name': 'General Information',
-                'description': 'Get information about animal control services'
             }
         ]
     
