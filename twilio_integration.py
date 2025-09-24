@@ -7,10 +7,6 @@ from agents.llm_animal_control_agent import LLMAnimalControlAgent
 import json
 from twilio_config import DEFAULT_GATHER_PARAMS
 
-# Define the base URL for webhooks
-base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
-
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -63,7 +59,7 @@ def answer_call():
         
         debug_print("SENDING GREETING", f"To caller: {caller_id}, Message: '{initial_greeting[:50]}...'")
         # Add a greeting and wait for user input
-        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say(initial_greeting)
         resp.append(gather)
         
@@ -72,7 +68,7 @@ def answer_call():
     else:
         debug_print("CONTINUING CONVERSATION", f"With caller: {caller_id}")
         # Continue existing conversation
-        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say("Please continue with your animal control request.")
         resp.append(gather)
     
@@ -128,7 +124,7 @@ def process_speech():
         
         debug_print("SENDING RESPONSE", f"To caller: {caller_id}")
         # Respond to the caller and wait for more input
-        gather = Gather(input='speech', action='/process_speech', # timeout_url removed - not supported by Twilio Gather language='en-US', **DEFAULT_GATHER_PARAMS)
+        gather = Gather(input='speech', action='/process_speech', language='en-US', **DEFAULT_GATHER_PARAMS)
         gather.say(response_message)
         resp.append(gather)
         
@@ -140,60 +136,6 @@ def process_speech():
         resp.say("I'm sorry, but your session has expired. Please call back.")
         debug_print("HANGING UP - NO SESSION", f"Caller: {caller_id}")
         resp.hangup()
-    
-    return str(resp)
-
-@app.route("/timeout_handler", methods=['POST', 'GET'])
-def timeout_handler():
-    """Handle timeouts when user doesn't respond"""
-    # Get the caller's phone number
-    caller_id = request.values.get('From', '')
-    call_sid = request.values.get('CallSid', '')
-    
-    debug_print("TIMEOUT DETECTED", f"Caller: {caller_id}, Call SID: {call_sid}")
-    
-    # Create a new TwiML response
-    resp = VoiceResponse()
-    
-    # Check if this is the first timeout or a repeated one
-    session = caller_sessions.get(caller_id, {})
-    timeout_count = session.get('timeout_count', 0)
-    
-    # Update timeout count
-    if caller_id in caller_sessions:
-        caller_sessions[caller_id]['timeout_count'] = timeout_count + 1
-    else:
-        caller_sessions[caller_id] = {'timeout_count': 1}
-    
-    # If this is the first or second timeout, check if they're still there
-    if timeout_count < 2:
-        debug_print("CHECKING USER PRESENCE", f"Timeout count: {timeout_count + 1}")
-        
-        # Ask if they're still there and gather input
-        gather = Gather(
-            input='speech', 
-            action='/process_speech',
-            # timeout_url removed - not supported by Twilio Gather
-            language='en-US',
-            **DEFAULT_GATHER_PARAMS
-        )
-        
-        # Use a different message based on timeout count
-        if timeout_count == 0:
-            gather.say("Are you still there? I didn't hear anything.")
-        else:
-            gather.say("I still don't hear a response. Please say something if you're still on the line.")
-        
-        resp.append(gather)
-    else:
-        # After multiple timeouts, assume user is gone and hang up
-        debug_print("MULTIPLE TIMEOUTS", f"Hanging up after {timeout_count + 1} timeouts")
-        resp.say("I haven't heard from you for a while. Please call back when you're ready to continue. Goodbye.")
-        resp.hangup()
-        
-        # Clean up the session
-        if caller_id in caller_sessions:
-            del caller_sessions[caller_id]
     
     return str(resp)
 

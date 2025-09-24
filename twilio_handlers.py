@@ -46,67 +46,6 @@ active_conversations = {}
 def register_twilio_routes(app):
     """Register Twilio webhook routes with the Flask app"""
     
-    # Define the base URL for webhooks
-    base_url = os.environ.get('BASE_URL', 'http://localhost:5000')
-    webhook_base = f"{base_url}/webhook"
-    
-    @app.route('/webhook/voice/timeout', methods=['POST', 'GET'])
-    def voice_timeout_handler():
-        """Handle timeouts when user doesn't respond"""
-        try:
-            # Get caller phone number
-            caller_number = request.values.get('From', '')
-            call_sid = request.values.get('CallSid', '')
-            
-            debug_print("TIMEOUT DETECTED", f"Caller: {caller_number}, Call SID: {call_sid}")
-            
-            # Create TwiML response
-            response = VoiceResponse()
-            
-            # Check if this is the first timeout or a repeated one
-            timeout_count = active_conversations.get(caller_number, {}).get('timeout_count', 0)
-            active_conversations.setdefault(caller_number, {})['timeout_count'] = timeout_count + 1
-            
-            # If this is the first or second timeout, check if they're still there
-            if timeout_count < 2:
-                debug_print("CHECKING USER PRESENCE", f"Timeout count: {timeout_count + 1}")
-                
-                # Ask if they're still there and gather input
-                gather = Gather(
-                    input='speech dtmf',
-                    action='/webhook/voice',
-                    method='POST',
-                    language='en-US',
-                    # Note: timeout_url is not supported by Twilio Gather
-                    **DEFAULT_GATHER_PARAMS
-                )
-                
-                # Use a different message based on timeout count
-                if timeout_count == 0:
-                    gather.say("<speak><prosody rate='fast'>Are you still there? I didn't hear anything.</prosody></speak>", voice='Polly.Matthew')
-                else:
-                    gather.say("<speak><prosody rate='fast'>I still don't hear a response. Please say something if you're still on the line.</prosody></speak>", voice='Polly.Matthew')
-                
-                response.append(gather)
-            else:
-                # After multiple timeouts, assume user is gone and hang up
-                debug_print("MULTIPLE TIMEOUTS", f"Hanging up after {timeout_count + 1} timeouts")
-                response.say("<speak><prosody rate='fast'>I haven't heard from you for a while. Please call back when you're ready to continue. Goodbye.</prosody></speak>", voice='Polly.Matthew')
-                response.hangup()
-                
-                # Clean up the session
-                if caller_number in active_conversations:
-                    del active_conversations[caller_number]
-            
-            return str(response)
-            
-        except Exception as e:
-            logger.error(f"Error in timeout handler: {str(e)}")
-            response = VoiceResponse()
-            response.say("<speak><prosody rate='fast'>I'm sorry, there was an error. Please call back later.</prosody></speak>", voice='Polly.Matthew')
-            response.hangup()
-            return str(response)
-    
     @app.route('/webhook/voice', methods=['POST'])
     def voice_webhook():
         """Handle incoming voice calls"""
@@ -138,7 +77,6 @@ def register_twilio_routes(app):
                         action='/webhook/voice',
                         method='POST',
                         language='en-US',
-                        # Note: timeout_url is not supported by Twilio Gather
                         hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                         **DEFAULT_GATHER_PARAMS
                     )
@@ -157,7 +95,6 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     language='en-US',
-                    # Note: timeout_url is not supported by Twilio Gather
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
@@ -182,7 +119,6 @@ def register_twilio_routes(app):
                     action='/webhook/voice',
                     method='POST',
                     language='en-US',
-                    # Note: timeout_url is not supported by Twilio Gather
                     hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
                     **DEFAULT_GATHER_PARAMS
                 )
@@ -208,7 +144,6 @@ def register_twilio_routes(app):
                 action='/webhook/voice',
                 method='POST',
                 language='en-US',
-                # Note: timeout_url is not supported by Twilio Gather
                 **DEFAULT_GATHER_PARAMS
             )
             gather.say(error_message, voice='Polly.Matthew')
