@@ -12,6 +12,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 
 from agents.llm_animal_control_agent import LLMAnimalControlAgent
+from twilio_config import DEFAULT_GATHER_PARAMS
 
 # Configure logging
 logging.basicConfig(
@@ -75,13 +76,9 @@ def register_twilio_routes(app):
                         input='speech dtmf',
                         action='/webhook/voice',
                         method='POST',
-                        speech_timeout='auto',
-                        enhanced=True,
                         language='en-US',
-                        timeout=10,
-                        bargeIn=True,
-                        speechModel='phone_call',
-                        hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
+                        hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
+                        **DEFAULT_GATHER_PARAMS
                     )
                     gather.say("<speak><prosody rate='fast'>Please tell me how I can help you with animal control services.</prosody></speak>", voice='Polly.Matthew')
                     response.append(gather)
@@ -97,14 +94,9 @@ def register_twilio_routes(app):
                     input='speech dtmf',
                     action='/webhook/voice',
                     method='POST',
-                    speech_timeout='auto',
-                    enhanced=True,
                     language='en-US',
-                    timeout=10,
-                    bargeIn=True,  # Allow user to interrupt the voice
-                    speechModel='phone_call',  # Optimized for phone conversations
-                    profanityFilter=False,  # Allow natural speech including potential profanity
-                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
+                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
+                    **DEFAULT_GATHER_PARAMS
                 )
                 # Add voice speed control with SSML
                 gather.say(f"<speak><prosody rate='fast'>{agent_response}</prosody></speak>", voice='Polly.Matthew')
@@ -126,14 +118,9 @@ def register_twilio_routes(app):
                     input='speech dtmf',
                     action='/webhook/voice',
                     method='POST',
-                    speech_timeout='auto',
-                    enhanced=True,
                     language='en-US',
-                    timeout=10,
-                    bargeIn=True,  # Allow user to interrupt the voice
-                    speechModel='phone_call',  # Optimized for phone conversations
-                    profanityFilter=False,  # Allow natural speech including potential profanity
-                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption'
+                    hints='stray dog, stray cat, animal control, wildlife, raccoon, skunk, possum, coyote, report, emergency, surrender pet, adoption',
+                    **DEFAULT_GATHER_PARAMS
                 )
                 # Add voice speed control with SSML
                 gather.say(f"<speak><prosody rate='fast'>{greeting}</prosody></speak>", voice='Polly.Matthew')
@@ -156,12 +143,8 @@ def register_twilio_routes(app):
                 input='speech dtmf',
                 action='/webhook/voice',
                 method='POST',
-                speech_timeout='auto',
-                enhanced=True,
                 language='en-US',
-                timeout=10,
-                bargeIn=True,
-                speechModel='phone_call'
+                **DEFAULT_GATHER_PARAMS
             )
             gather.say(error_message, voice='Polly.Matthew')
             response.append(gather)
