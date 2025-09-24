@@ -210,7 +210,6 @@ Your tasks:
    - If they just provided condition information, acknowledge that: "I understand the [animal_type] is [condition]."
    - Only after acknowledging recent information, ask for the next piece of information
    - DO NOT include any step indicators or progress information in your responses
-   - For emergency cases, always include the emergency hotline number (555-ANIMAL) in your responses
 
 5. Provide immediate guidance based on the situation
 6. Use generate_response with appropriate next_action
