@@ -70,6 +70,10 @@ For example, if they say "I lost my dog", use update_context to set animal_type=
     
     # Using the base class implementation for dynamic prompt generation
     
+    def enter(self, context: Dict[str, Any]) -> str:
+        """Return a default short greeting instead of making an LLM call"""
+        return "Hello! I'm the Animal Control Services assistant. How can I help you today?"
+    
     def generate_contextual_prompt(self, context: Dict[str, Any]) -> str:
         """Generate a contextual prompt for greeting state"""
         # Add available services to context
