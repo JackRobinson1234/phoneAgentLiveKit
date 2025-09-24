@@ -5,6 +5,7 @@ Handles both voice and SMS interactions
 
 import os
 import logging
+import datetime
 from flask import request, jsonify
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.twiml.messaging_response import MessagingResponse
@@ -13,8 +14,20 @@ from twilio.rest import Client
 from agents.llm_animal_control_agent import LLMAnimalControlAgent
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
+
+# Debug function to print actions with timestamps
+def debug_print(action, details=None):
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    if details:
+        logger.info(f"[{timestamp}] {action}: {details}")
+    else:
+        logger.info(f"[{timestamp}] {action}")
 
 # Initialize Twilio client
 try:
@@ -38,6 +51,9 @@ def register_twilio_routes(app):
         try:
             # Get caller phone number
             caller_number = request.values.get('From', '')
+            call_sid = request.values.get('CallSid', '')
+            
+            debug_print("VOICE WEBHOOK", f"Call SID: {call_sid}, Caller: {caller_number}")
             
             # Create TwiML response
             response = VoiceResponse()
@@ -46,10 +62,11 @@ def register_twilio_routes(app):
             if 'SpeechResult' in request.values:
                 # This is a continuation with speech input
                 user_input = request.values.get('SpeechResult', '')
-                logger.info(f"Received speech input: {user_input}")
+                debug_print("SPEECH INPUT", f"Caller: {caller_number}, Input: '{user_input}'")
                 
                 # Check for empty or very short input that might indicate recognition failure
                 if not user_input or len(user_input.strip()) < 2:
+                    debug_print("SPEECH RECOGNITION FAILURE", f"Caller: {caller_number}")
                     # Handle speech recognition failure
                     response.say("<speak><prosody rate='fast'>I didn't quite catch that. Could you please repeat?</prosody></speak>", voice='Polly.Matthew')
                     
@@ -70,8 +87,10 @@ def register_twilio_routes(app):
                     response.append(gather)
                     return str(response)
                 
+                debug_print("PROCESSING VOICE INPUT", f"Caller: {caller_number}")
                 # Process the input with our agent
                 agent_response = process_voice_input(caller_number, user_input)
+                debug_print("AGENT RESPONSE", f"Length: {len(agent_response)} chars")
                 
                 # Speak the response and gather more input
                 gather = Gather(
@@ -95,10 +114,12 @@ def register_twilio_routes(app):
                 # The timeout parameter above ensures we wait 10 seconds for input
             else:
                 # This is a new call
-                logger.info(f"New call from {caller_number}")
+                debug_print("NEW CALL", f"Caller: {caller_number}, Call SID: {call_sid}")
                 
+                debug_print("STARTING CONVERSATION", f"Caller: {caller_number}")
                 # Start a new conversation
                 greeting = start_voice_conversation(caller_number)
+                debug_print("GREETING GENERATED", f"Length: {len(greeting)} chars")
                 
                 # Speak greeting and gather input
                 gather = Gather(
@@ -156,10 +177,12 @@ def register_twilio_routes(app):
             sender_number = request.values.get('From', '')
             message_body = request.values.get('Body', '').strip()
             
-            logger.info(f"Received SMS from {sender_number}: {message_body}")
+            debug_print("SMS RECEIVED", f"From: {sender_number}, Message: '{message_body}'")
             
+            debug_print("PROCESSING SMS", f"From: {sender_number}")
             # Process the message with our agent
             agent_response = process_sms_input(sender_number, message_body)
+            debug_print("SMS RESPONSE GENERATED", f"Length: {len(agent_response)} chars")
             
             # Create TwiML response
             response = MessagingResponse()
@@ -178,12 +201,15 @@ def register_twilio_routes(app):
 def start_voice_conversation(phone_number):
     """Start a new conversation for voice call"""
     try:
+        debug_print("CREATING AGENT", f"For caller: {phone_number}")
         # Create a new agent instance
         agent = LLMAnimalControlAgent()
         
+        debug_print("STARTING AGENT CONVERSATION", f"For caller: {phone_number}")
         # Get initial greeting
         greeting = agent.start_conversation()
         
+        debug_print("STORING AGENT", f"For caller: {phone_number}")
         # Store the agent instance
         active_conversations[phone_number] = agent
         
@@ -195,17 +221,21 @@ def start_voice_conversation(phone_number):
 def process_voice_input(phone_number, user_input):
     """Process voice input and get response"""
     try:
+        debug_print("RETRIEVING AGENT", f"For caller: {phone_number}")
         # Get the agent instance for this phone number
         agent = active_conversations.get(phone_number)
         
         # If no agent exists, create a new one
         if not agent:
+            debug_print("NO AGENT FOUND", f"Creating new agent for caller: {phone_number}")
             agent = LLMAnimalControlAgent()
             active_conversations[phone_number] = agent
             agent.start_conversation()
         
+        debug_print("AGENT PROCESSING MESSAGE", f"Input length: {len(user_input)} chars")
         # Process the message
         response = agent.process_message(user_input)
+        debug_print("AGENT PROCESSED MESSAGE", f"Response length: {len(response)} chars")
         
         return response
     except Exception as e:
@@ -215,17 +245,21 @@ def process_voice_input(phone_number, user_input):
 def process_sms_input(phone_number, message_body):
     """Process SMS input and get response"""
     try:
+        debug_print("RETRIEVING AGENT FOR SMS", f"From: {phone_number}")
         # Get the agent instance for this phone number
         agent = active_conversations.get(phone_number)
         
         # If no agent exists, create a new one
         if not agent:
+            debug_print("NO SMS AGENT FOUND", f"Creating new agent for sender: {phone_number}")
             agent = LLMAnimalControlAgent()
             active_conversations[phone_number] = agent
             agent.start_conversation()
         
+        debug_print("AGENT PROCESSING SMS", f"Message length: {len(message_body)} chars")
         # Process the message
         response = agent.process_message(message_body)
+        debug_print("AGENT PROCESSED SMS", f"Response length: {len(response)} chars")
         
         return response
     except Exception as e:
@@ -235,4 +269,8 @@ def process_sms_input(phone_number, message_body):
 def end_conversation(phone_number):
     """End a conversation and clean up"""
     if phone_number in active_conversations:
+        debug_print("ENDING CONVERSATION", f"For: {phone_number}")
         del active_conversations[phone_number]
+        debug_print("CONVERSATION ENDED", f"For: {phone_number}")
+    else:
+        debug_print("END CONVERSATION FAILED", f"No active conversation for: {phone_number}")
