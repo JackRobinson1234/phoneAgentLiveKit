@@ -322,11 +322,28 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
         
-        # Determine which information we still need to collect
-        missing_fields = self._get_missing_fields(updated_context)
+        # Special handling for animal_contained boolean field
+        # If animal_contained is False, it should be considered as present, not missing
+        if 'animal_contained' in updated_context:
+            print(f"ANIMAL CONTAINED VALUE: {updated_context['animal_contained']}")
+        
+        # Custom check for missing fields that handles boolean values properly
+        missing_fields = []
+        for field in self.required_fields:
+            if field == 'animal_contained':
+                # Only consider animal_contained missing if it's not in the context at all
+                if field not in updated_context:
+                    missing_fields.append(field)
+            else:
+                # For other fields, use the standard check
+                if not updated_context.get(field):
+                    missing_fields.append(field)
+        
+        print("MISSING FIELDS: ", missing_fields)
         
         # If we have all required information, prepare to transition
         if not missing_fields:
+            print("SHOULD TRANSITION!!!!")
             # Create case details from collected information
             updated_context['case_details'] = {
                 'type': 'emergency',
@@ -338,7 +355,7 @@ Your tone should be urgent but reassuring, focusing on getting the critical info
             }
                         
             return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        
+        print("NOT BEING TRANSITIONED, MISSING FIELDS!!!!")
         return StateResult.CONTINUE, None, updated_context
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
