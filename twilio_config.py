@@ -7,7 +7,7 @@ from itertools import filterfalse
 
 
 DEFAULT_GATHER_PARAMS = {
-    'speech_timeout': '1.0',       # Increased timeout for more complete speech capture
+    'speech_timeout': 'auto',       # Increased timeout for more complete speech capture
     'timeout': 10,                 # Longer overall timeout
     'enhanced': True,             # Enhanced speech recognition
     'speechModel': 'phone_call',  # Optimized for phone calls
