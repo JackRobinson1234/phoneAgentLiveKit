@@ -11,13 +11,7 @@ DEFAULT_GATHER_PARAMS = {
     'timeout': 10,                 # Longer overall timeout
     'enhanced': True,             # Enhanced speech recognition
     'speechModel': 'phone_call',  # Optimized for phone calls
-    'speechEndThreshold': 500,   # Increased threshold to reduce sensitivity to background noise (in milliseconds)
-    'bargeIn': filterfalse,              # Allow user to interrupt
-    'profanityFilter': False,     # Allow natural speech
-    'speechMinimumLength': 2,     # Minimum length of speech to be recognized (in seconds)
-    'speechContexts': [           # Provide speech contexts to improve recognition
-        'animal control', 'pet', 'dog', 'cat', 'surrender', 'emergency', 'found', 'lost'
-    ]
+    'profanityFilter': False
 }
 
 def configure_gather(gather_obj, **kwargs):
