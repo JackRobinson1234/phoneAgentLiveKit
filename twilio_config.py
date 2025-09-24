@@ -11,7 +11,7 @@ DEFAULT_GATHER_PARAMS = {
     'timeout': 5,                 # Longer overall timeout
     'enhanced': True,             # Enhanced speech recognition
     'speechModel': 'phone_call',  # Optimized for phone calls
-    'speechEndThreshold': 1200,   # Increased threshold to reduce sensitivity to background noise (in milliseconds)
+    'speechEndThreshold': 500,   # Increased threshold to reduce sensitivity to background noise (in milliseconds)
     'bargeIn': filterfalse,              # Allow user to interrupt
     'profanityFilter': False,     # Allow natural speech
     'speechMinimumLength': 2,     # Minimum length of speech to be recognized (in seconds)
