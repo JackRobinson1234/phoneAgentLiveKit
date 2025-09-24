@@ -447,33 +447,7 @@ Your tone should be appreciative and helpful while efficiently collecting the ne
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # Determine which information we still need to collect
-        missing_fields = self._get_missing_fields(updated_context)
-        
-        # If we have all required information, prepare to transition
-        if not missing_fields:
-            # Create case details from collected information
-            updated_context['case_details'] = {
-                'type': 'found',
-                'animal_type': updated_context.get('animal_type'),
-                'description': updated_context.get('animal_description', 'Unknown'),
-                'location_found': updated_context.get('location_found'),
-                'identifying_features': updated_context.get('identifying_features', 'None'),
-                'finder_can_keep': updated_context.get('finder_can_keep', 'Unknown'),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about this found animal. Let me summarize what we have so far."
-            
-            return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        
-        # Otherwise, use the LLM-generated response
-        # Do not override with hardcoded prompts - let the LLM handle the conversation flow
-        # The message should already be set by process_input_with_llm
-        
-        return StateResult.CONTINUE, None, updated_context
+        return result, next_state, updated_context
     
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
@@ -571,48 +545,7 @@ CRITICAL: NEVER start your response with generic phrases like "I understand you'
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # Validate contact information if provided
-        if updated_context.get('owner_contact') and not self._validate_contact(updated_context['owner_contact']):
-            updated_context['contact_validation_error'] = True
-            # Remove invalid contact so we'll ask for it again
-            del updated_context['owner_contact']
-        
-        # Determine which information we still need to collect
-        missing_fields = self._get_missing_fields(updated_context)
-        
-        # If we have all required information, prepare to transition
-        if not missing_fields:
-            # Create case details from collected information
-            updated_context['case_details'] = {
-                'type': 'lost',
-                'animal_type': updated_context.get('animal_type'),
-                'animal_name': updated_context.get('animal_name', 'Unknown'),
-                'description': updated_context.get('animal_description', ''),
-                'last_seen_location': updated_context.get('last_seen_location'),
-                'last_seen_time': updated_context.get('last_seen_time', 'Recently'),
-                'identifying_features': updated_context.get('identifying_features', 'None reported'),
-                'owner_name': updated_context.get('owner_name', ''),
-                'owner_contact': updated_context.get('owner_contact', ''),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about your lost pet. Let me summarize what we have so far."
-            
-            # Auto-transition to confirmation state when all fields are complete
-            return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        
-        # Auto-transition if the LLM requested a transition and we have enough information
-        if result == StateResult.TRANSITION and next_state and len(missing_fields) <= 1:
-            # We're only missing one field, but the LLM wants to transition
-            # This allows for more natural conversation flow
-            return result, next_state, updated_context
-        
-        # Otherwise, use the LLM-generated response
-        # The message should already be set by process_input_with_llm
-        
-        return StateResult.CONTINUE, None, updated_context
+        return result, next_state, updated_context
     
     def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
         """Determine the next state based on context information"""
@@ -725,36 +658,8 @@ CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept mult
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
+        return result, next_state, updated_context
         
-        # Determine which information we still need to collect
-        missing_fields = self._get_missing_fields(updated_context)
-        
-        # If we have all required information, prepare to transition
-        if not missing_fields:
-            # Create case details from collected information
-            updated_context['case_details'] = {
-                'type': 'surrender',
-                'animal_type': updated_context.get('animal_type'),
-                'animal_name': updated_context.get('animal_name', 'Unknown'),
-                'animal_age': updated_context.get('animal_age', 'Unknown'),
-                'surrender_reason': updated_context.get('surrender_reason', ''),
-                'medical_issues': updated_context.get('medical_issues', 'None reported'),
-                'behavioral_issues': updated_context.get('behavioral_issues', 'None reported'),
-                'owner_name': updated_context.get('owner_name', ''),
-                'owner_contact': updated_context.get('owner_contact', ''),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            # Add a message to the context indicating all information has been collected
-            updated_context['message'] = "Thank you for providing all the necessary information about your pet surrender request. Let's schedule an appointment for the surrender."
-            
-            return StateResult.TRANSITION, "SCHEDULE_SURRENDER", updated_context
-        
-        # Otherwise, use the LLM-generated response
-        # The message should already be set by process_input_with_llm
-        
-        return StateResult.CONTINUE, None, updated_context
-    
     def _get_missing_fields(self, context: Dict[str, Any]) -> list:
         """Determine which required fields are still missing"""
         return [field for field in self.required_fields if field not in context]
@@ -808,43 +713,6 @@ CRITICAL: Ensure the user understands the surrender process and what to bring.""
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # Check for appointment confirmation (yes/no responses)
-        user_input_lower = user_input.lower().strip()
-        if context.get(ContextField.SELECTED_DATE.value) and any(word in user_input_lower for word in ['yes', 'yeah', 'sure', 'ok', 'okay', 'confirm', 'works', 'good']):
-            # User confirmed the appointment time
-            if 'case_details' not in updated_context:
-                updated_context['case_details'] = {}
-            
-            # Make sure we have the appointment date in case_details
-            if isinstance(context.get(ContextField.SELECTED_DATE.value), str):
-                # If it's already a string (ISO format), use it directly
-                appointment_date = context.get(ContextField.SELECTED_DATE.value)
-                updated_context['case_details']['appointment_date'] = appointment_date
-            else:
-                # Fallback in case it's not a string
-                updated_context['case_details']['appointment_date'] = 'Confirmed appointment'
-            
-            # Transition to case confirmation
-            return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        
-        # Handle numeric date selection
-        try:
-            selection = int(user_input.strip())
-            if 1 <= selection <= 3:
-                available_dates = [
-                    "Monday, October 5 (10:00 AM - 2:00 PM)",
-                    "Wednesday, October 7 (1:00 PM - 4:00 PM)",
-                    "Friday, October 9 (9:00 AM - 12:00 PM)"
-                ]
-                updated_context['selected_date'] = available_dates[selection-1]
-                updated_context['case_details']['appointment_date'] = available_dates[selection-1]
-                
-                if result == StateResult.CONTINUE:
-                    return StateResult.TRANSITION, "CASE_CONFIRMATION", updated_context
-        except ValueError:
-            pass
-        
         return result, next_state, updated_context
         
     def get_next_state_name(self, context: Dict[str, Any]) -> Optional[str]:
@@ -897,19 +765,6 @@ CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to 
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # If the user's query matches a specific service, transition to that service
-        user_input_lower = user_input.lower()
-        
-        if any(term in user_input_lower for term in ['injured', 'hurt', 'emergency', 'abuse']):
-            return StateResult.TRANSITION, "EMERGENCY_CASE", updated_context
-        elif any(term in user_input_lower for term in ['found', 'stray']):
-            return StateResult.TRANSITION, "REPORT_FOUND", updated_context
-        elif any(term in user_input_lower for term in ['lost', 'missing']):
-            return StateResult.TRANSITION, "REPORT_LOST", updated_context
-        elif any(term in user_input_lower for term in ['surrender', 'give up', 'rehome']):
-            return StateResult.TRANSITION, "PET_SURRENDER", updated_context
-        
         return result, next_state, updated_context
 
 class LLMCaseConfirmationState(AnimalControlState):
@@ -947,22 +802,7 @@ CRITICAL: End with "Thank you for calling Animal Control Services. Goodbye." to 
     
     def process_input(self, user_input: str, context: Dict[str, Any]) -> Tuple[StateResult, Optional[str], Dict[str, Any]]:
         result, next_state, updated_context = self.process_input_with_llm(user_input, context)
-        
-        # Check for confirmation
-        user_input_lower = user_input.lower()
-        if any(term in user_input_lower for term in ['yes', 'correct', 'right', 'good', 'confirm']):
-            # Generate case ID
-            case_id = f"CASE-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            updated_context['case_id'] = case_id
-            updated_context['case_details']['case_id'] = case_id
-            updated_context['case_details']['status'] = 'submitted'
-            
-            # In a real system, we would save the case to a database here
-            
-            return StateResult.TRANSITION, "CASE_COMPLETE", updated_context
-        
         return result, next_state, updated_context
-
 class LLMCaseCompleteState(AnimalControlState):
     """LLM-enhanced state for case completion"""
     
