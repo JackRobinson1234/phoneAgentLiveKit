@@ -2,15 +2,22 @@
 Twilio configuration settings for optimized speech recognition
 """
 
-# Default Gather parameters for faster API posting
+# Default Gather parameters for optimized speech recognition
+from itertools import filterfalse
+
+
 DEFAULT_GATHER_PARAMS = {
-    'speech_timeout': '1.5',  # Shorter timeout for faster endpoint detection
-    'timeout': 3,             # Shorter overall timeout
-    'enhanced': True,         # Enhanced speech recognition
+    'speech_timeout': '2.0',       # Increased timeout for more complete speech capture
+    'timeout': 5,                 # Longer overall timeout
+    'enhanced': True,             # Enhanced speech recognition
     'speechModel': 'phone_call',  # Optimized for phone calls
-    'speechEndThreshold': 500,    # End detection threshold in milliseconds
-    'bargeIn': True,          # Allow user to interrupt
-    'profanityFilter': False  # Allow natural speech
+    'speechEndThreshold': 1200,   # Increased threshold to reduce sensitivity to background noise (in milliseconds)
+    'bargeIn': filterfalse,              # Allow user to interrupt
+    'profanityFilter': False,     # Allow natural speech
+    'speechMinimumLength': 2,     # Minimum length of speech to be recognized (in seconds)
+    'speechContexts': [           # Provide speech contexts to improve recognition
+        'animal control', 'pet', 'dog', 'cat', 'surrender', 'emergency', 'found', 'lost'
+    ]
 }
 
 def configure_gather(gather_obj, **kwargs):
