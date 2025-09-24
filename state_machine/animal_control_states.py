@@ -809,7 +809,15 @@ Your tasks:
 3. Direct users to specific services if needed
 4. Use generate_response with appropriate next_action
 
-CRITICAL: Be informative and helpful, directing users to specific services when appropriate."""
+CRITICAL: Be informative and helpful, directing users to specific services when appropriate.
+VOICE OPTIMIZATION REQUIREMENTS:
+1. Keep all responses under 3 sentences when possible
+2. Use simple, direct language suitable for voice
+3. Avoid long lists or complex explanations
+4. Focus on the most important information only
+5. Break complex topics into simple, digestible points
+
+CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember."""
         
         super().__init__("GENERAL_INFO", system_prompt)
     
