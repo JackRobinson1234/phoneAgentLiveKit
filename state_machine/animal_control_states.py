@@ -393,7 +393,9 @@ VOICE OPTIMIZATION REQUIREMENTS:
 3. Avoid long lists or complex explanations
 4. Focus on the most important information only
 5. Break complex topics into simple, digestible points
-
+VALID STATE TRANSITIONS:
+When all required information is collected, transition to CASE_CONFIRMATION state using:
+next_action='transition', next_state='CASE_CONFIRMATION'
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 Your tone should be appreciative and helpful while efficiently collecting the needed information."""
         }
