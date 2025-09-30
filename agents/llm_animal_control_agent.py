@@ -10,7 +10,7 @@ from state_machine.animal_control_states import (
     LLMScheduleSurrenderState, LLMGeneralInfoState, LLMCaseConfirmationState,
     LLMCaseCompleteState, LLMErrorHandlingState, LLMFinalSummaryState
 )
-from .llm_service import llm_service
+from .llm_service import get_llm_service
 
 class LLMAnimalControlAgent:
     """LLM-enhanced animal control agent orchestrator"""
@@ -24,7 +24,7 @@ class LLMAnimalControlAgent:
         
         # Test LLM connection
         try:
-            if not llm_service.test_connection():
+            if not get_llm_service().test_connection():
                 print("⚠️  Warning: LLM connection failed")
                 raise RuntimeError("LLM connection failed")
         except Exception as e:
@@ -212,8 +212,8 @@ class LLMAnimalControlAgent:
         
         # Add LLM-specific stats
         try:
-            stats['llm_connection_test'] = llm_service.test_connection()
-            stats['available_models'] = llm_service.get_available_models()
+            stats['llm_connection_test'] = get_llm_service().test_connection()
+            stats['available_models'] = get_llm_service().get_available_models()
         except:
             stats['llm_connection_test'] = False
         
@@ -230,14 +230,15 @@ class LLMAnimalControlAgent:
         
         try:
             # Test LLM service
-            results['llm_service_available'] = llm_service is not None
+            llm_svc = get_llm_service()
+            results['llm_service_available'] = llm_svc is not None
             
             # Test connection
-            results['connection_test'] = llm_service.test_connection()
+            results['connection_test'] = llm_svc.test_connection()
             
             # Test LLM with a sample request
             sample_text = "I found a stray dog"
-            analysis = llm_service.analyze_request(sample_text)
+            analysis = llm_svc.analyze_request(sample_text)
             results['sample_analysis'] = analysis
             
         except Exception as e:

@@ -353,5 +353,28 @@ class LLMToolManager:
         return [self.tools[name] for name in tool_names if name in self.tools]
 
 # Global instances
-llm_service = OpenRouterService()
-tool_manager = LLMToolManager()
+# Initialize lazily to avoid requiring API key at import time
+llm_service = None
+tool_manager = None
+
+def get_llm_service():
+    """Get or create the global LLM service instance"""
+    global llm_service
+    if llm_service is None:
+        llm_service = OpenRouterService()
+    return llm_service
+
+def get_tool_manager():
+    """Get or create the global tool manager instance"""
+    global tool_manager
+    if tool_manager is None:
+        tool_manager = LLMToolManager()
+    return tool_manager
+
+# Initialize immediately if API key is available (for backward compatibility)
+if os.getenv('OPENROUTER_API_KEY'):
+    try:
+        llm_service = OpenRouterService()
+        tool_manager = LLMToolManager()
+    except:
+        pass  # Will be initialized on first use

@@ -4,7 +4,7 @@ from enum import Enum
 from datetime import datetime
 import json
 
-from agents.llm_service import llm_service, tool_manager
+from agents.llm_service import get_llm_service, get_tool_manager
 from .context_fields import ContextField
 from settings import AVAILABLE_MODELS, LLM_CONFIG
 
@@ -85,11 +85,11 @@ CRITICAL INSTRUCTIONS:
                     messages.append({"role": role, "content": turn['message']})
             
             # Get available tools for this state
-            tools = tool_manager.get_tools_for_state(self.name)
+            tools = get_tool_manager().get_tools_for_state(self.name)
             
             # Make LLM call
             print(f"🔧 SYSTEM: Making LLM call for state entry '{self.name}' with {len(tools)} tools available")
-            response = llm_service.chat_completion(
+            response = get_llm_service().chat_completion(
                 messages=messages,
                 tools=tools,
                 model=self.model
@@ -168,7 +168,7 @@ Remember to use the generate_response tool for your final response.
             ]
             
             # Make LLM call without tools
-            response = llm_service.chat_completion(
+            response = get_llm_service().chat_completion(
                 messages=messages,
                 model=self.model
             )
@@ -484,11 +484,11 @@ Remember to use the generate_response tool for your final response.
             messages[0]["content"] = self._enhance_system_prompt_with_context(messages[0]["content"], context)
             
             # Get tools for current state
-            tools = tool_manager.get_tools_for_state(self.name)
+            tools = get_tool_manager().get_tools_for_state(self.name)
             
             # Make LLM call
             print(f"🔧 SYSTEM: Making LLM call for state '{self.name}' with {len(tools)} tools available")
-            response = llm_service.chat_completion(
+            response = get_llm_service().chat_completion(
                 messages=messages,
                 tools=tools,
                 model=self.model
