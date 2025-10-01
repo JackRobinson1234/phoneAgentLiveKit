@@ -5,6 +5,7 @@ Run this after setting up Supabase to test the integration
 """
 
 import os
+import time
 from dotenv import load_dotenv
 from src.logging import CallLogger
 
@@ -75,6 +76,10 @@ def test_call_logging(logger):
             completion_status="completed"
         )
         print("✅ Call ended")
+        
+        # Wait for async logging to complete
+        print("⏳ Waiting for background logging to complete...")
+        time.sleep(2)
         
         return call_id
         

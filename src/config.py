@@ -32,7 +32,7 @@ def get_api_base_url():
 LLM_CONFIG = {
     'provider': 'openrouter',
     'api_base_url': 'https://openrouter.ai/api/v1',
-    'model': 'anthropic/claude-3.5-sonnet',  # Default model
+    'model': 'anthropic/claude-3-haiku',  # Fast model for real-time conversations
     'temperature': 0.7,
     'max_tokens': 1000,
     'timeout': 30,
