@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 from datetime import datetime
+import os
 
 from src.models.animal_database import MockAnimalDatabase
 from src.state_machine.state_machine import StateMachine
@@ -11,13 +12,29 @@ from src.state_machine.animal_control_states import (
     LLMCaseCompleteState, LLMErrorHandlingState, LLMFinalSummaryState
 )
 from .llm_service import get_llm_service
+from src.logging import CallLogger
 
 class LLMAnimalControlAgent:
     """LLM-enhanced animal control agent orchestrator"""
     
     def __init__(self):
         self.database = MockAnimalDatabase()
-        self.state_machine = StateMachine()
+        
+        # Initialize call logger if Supabase credentials are available
+        self.call_logger = None
+        try:
+            supabase_url = os.getenv('SUPABASE_URL')
+            supabase_key = os.getenv('SUPABASE_KEY')
+            if supabase_url and supabase_key:
+                self.call_logger = CallLogger(supabase_url, supabase_key)
+                print("✅ Call logger initialized successfully")
+            else:
+                print("⚠️  Call logger disabled - Supabase credentials not found")
+        except Exception as e:
+            print(f"⚠️  Warning: Call logger initialization failed: {e}")
+        
+        # Initialize state machine with logger
+        self.state_machine = StateMachine(call_logger=self.call_logger)
         self.session_id = None
         self.is_initialized = False
         self.llm_enabled = True
@@ -66,11 +83,13 @@ class LLMAnimalControlAgent:
         # Generate session ID
         self.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
+        print(f"🎬 Starting conversation with session ID: {self.session_id}")
+        
         # Create a concise greeting message
         greeting = "Hello! I'm here to help with animal control services. How can I assist you today?"
         
-        # Start state machine (but don't use its initial message)
-        self.state_machine.start_conversation()
+        # Start state machine with session ID for logging
+        self.state_machine.start_conversation(session_id=self.session_id)
         
         # Return the standardized greeting
         return greeting

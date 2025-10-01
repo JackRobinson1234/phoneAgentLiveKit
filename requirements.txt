@@ -12,3 +12,7 @@ gunicorn==20.1.0
 # LiveKit Voice Agent
 livekit-agents[deepgram,openai,cartesia,silero,turn-detector]~=1.2
 livekit-plugins-noise-cancellation~=0.2
+
+# Database and Logging
+supabase>=2.20.0
+websockets>=15.0.0

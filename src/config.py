@@ -28,6 +28,7 @@ def get_api_base_url():
         return RAILWAY_URL
     else:
         return f"http://localhost:{API_PORT}"
+        
 LLM_CONFIG = {
     'provider': 'openrouter',
     'api_base_url': 'https://openrouter.ai/api/v1',
@@ -38,4 +39,12 @@ LLM_CONFIG = {
     'retry_attempts': 3,
     'use_tools': True,
     'fallback_model': 'openai/gpt-3.5-turbo',
+}
+
+AVAILABLE_MODELS = {
+    'conversation': 'anthropic/claude-3.5-sonnet',
+    'intent_detection': 'openai/gpt-4o-mini',
+    'entity_extraction': 'openai/gpt-4o-mini',
+    'response_generation': 'anthropic/claude-3.5-sonnet',
+    'fallback': 'openai/gpt-3.5-turbo'
 }

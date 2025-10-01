@@ -57,10 +57,17 @@ VOICE OPTIMIZATION REQUIREMENTS:
 5. Break complex topics into simple, digestible points
 
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+CRITICAL: When transitioning to a new state, you MUST use the generate_response tool with next_action='transition', next_state='STATE_NAME', AND a response message that asks for what the next state needs. This eliminates a second LLM call and makes transitions faster.
 
 CRITICAL: Use update_context tool to extract ANY information the user provides, even if they're just in the greeting state.
-For example, if they say "I lost my dog", use update_context to set animal_type="dog" and detected_intent="lost"."""
+For example, if they say "I lost my dog", use update_context to set animal_type="dog" and detected_intent="lost".
+
+CRITICAL TRANSITION GUIDANCE:
+When transitioning to PET_SURRENDER:
+- ASK ONLY ONE QUESTION - ask for the FIRST missing piece of information
+- If animal_type is already known: "I understand you'd like to surrender your [animal_type]. Could you tell me the reason for surrender?"
+- If animal_type is NOT known: "I understand you'd like to surrender a pet. What type of animal is it?"
+- NEVER ask for multiple pieces of information at once (e.g., "type and reason")"""
         
         super().__init__("GREETING", system_prompt)
         
@@ -369,7 +376,7 @@ Your tasks:
 
 5. Use generate_response with appropriate next_action
 
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+CRITICAL: When transitioning to a new state, you MUST use the generate_response tool with next_action='transition', next_state='STATE_NAME', AND a response message that asks for what the next state needs. This eliminates a second LLM call and makes transitions faster.
 
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
 
@@ -490,7 +497,7 @@ VOICE OPTIMIZATION REQUIREMENTS:
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 5. Use generate_response with appropriate next_action
 
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+CRITICAL: When transitioning to a new state, you MUST use the generate_response tool with next_action='transition', next_state='STATE_NAME', AND a response message that asks for what the next state needs. This eliminates a second LLM call and makes transitions faster.
 
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
 
@@ -607,7 +614,9 @@ VOICE OPTIMIZATION REQUIREMENTS:
 
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
 CRITICAL: ONE QUESTION AT A TIME. If you need multiple pieces of information, ask for them one at a time across multiple turns.
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response.
+CRITICAL: When transitioning to a new state, you MUST use the generate_response tool with next_action='transition', next_state='STATE_NAME', AND a response message that asks for what the next state needs. This eliminates a second LLM call and makes transitions faster.
+
+CRITICAL: ALWAYS check the context FIRST before asking questions. If animal_type is already in the context, DO NOT ask for it again. Move to the next missing field.
 
 CRITICAL: Be conversational and natural. Don't use rigid templates. Adapt your responses based on the context and what information is already available.
 
@@ -615,7 +624,14 @@ CRITICAL: NEVER ask for information that's already been provided. For example, i
 
 CRITICAL: NEVER start your response with generic phrases like "I understand you want to surrender your pet" when you have more specific information. Always acknowledge the most recent information first.
 
-CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided."""
+CRITICAL: Collect information ONE STEP AT A TIME, but be flexible to accept multiple pieces of information when provided.
+
+TRANSITION TO SCHEDULE_SURRENDER:
+When all required information is collected and transitioning to SCHEDULE_SURRENDER, your response MUST:
+1. Acknowledge that you have all the information needed
+2. Ask when they would like to schedule the appointment
+Example: "Thank you, Jack. I have all the information I need. When would you like to schedule the appointment to bring your dog in?"
+DO NOT just say "Let me help you schedule" - you must ASK for their preferred time."""
         
         super().__init__("PET_SURRENDER", system_prompt)
         self.required_fields = [
@@ -661,7 +677,21 @@ VOICE OPTIMIZATION REQUIREMENTS:
 5. Break complex topics into simple, digestible points
 
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
-CRITICAL: Ensure the user understands the surrender process and what to bring."""
+CRITICAL: Ensure the user understands the surrender process and what to bring.
+
+TRANSITION TO CASE_CONFIRMATION:
+When transitioning to CASE_CONFIRMATION after confirming the appointment, your response MUST include:
+1. A complete summary of ALL collected information:
+   - Animal type and any details (breed, age, name if provided)
+   - Reason for surrender
+   - Health/behavioral issues (or "no issues reported")
+   - Owner name and contact
+   - Appointment date and time
+2. Ask if all the information is correct
+
+Example: "Perfect! Let me confirm the details: You're surrendering a dog because [reason]. The dog has [health status]. Your appointment is scheduled for [date] at [time] under the name [name], phone [phone]. Is all of this information correct?"
+
+DO NOT just say "Let me summarize" without actually providing the summary."""
         
         super().__init__("SCHEDULE_SURRENDER", system_prompt)
     
@@ -938,7 +968,7 @@ VOICE OPTIMIZATION REQUIREMENTS:
 5. Break complex topics into simple, digestible points
 
 CRITICAL: Be concise and direct. Voice users need short, clear responses they can easily understand and remember.
-CRITICAL: When transitioning to a new state, ONLY use the generate_response tool with next_action='transition' and next_state='STATE_NAME'. DO NOT include a response message - the next state will generate the appropriate response."""
+CRITICAL: When transitioning to a new state, you MUST use the generate_response tool with next_action='transition', next_state='STATE_NAME', AND a response message that asks for what the next state needs. This eliminates a second LLM call and makes transitions faster."""
         
         super().__init__("ERROR_HANDLING", system_prompt)
     

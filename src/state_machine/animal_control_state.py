@@ -6,7 +6,7 @@ import json
 
 from src.agents.llm_service import get_llm_service, get_tool_manager
 from .context_fields import ContextField
-
+from src.config import AVAILABLE_MODELS
 class StateResult(Enum):
     """Possible results from state execution"""
     CONTINUE = "continue"  # Stay in current state
@@ -25,6 +25,9 @@ class AnimalControlState(ABC):
         self.retry_count = 0
         self.max_retries = 3
         self.database = database
+        # State metadata for transitions
+        self.state_description = ""  # Brief description of what this state does
+        self.first_question = ""  # What to ask when entering this state
     
     def _get_default_system_prompt(self) -> str:
         """Get default system prompt for this state"""
@@ -436,7 +439,60 @@ Remember to use the generate_response tool for your final response.
                 prompt += "\nAll required information has been collected.\n"
                 
         prompt += "\n===== END CONTEXT INFORMATION =====\n"
+        
+        # Add state transition information for optimization
+        prompt += "\n\n===== STATE TRANSITION OPTIMIZATION =====\n"
+        prompt += "When transitioning to a new state, you MUST provide a response that does what that state needs.\n"
+        prompt += "This eliminates a second LLM call and makes the conversation faster.\n\n"
+        
+        state_info = self._get_state_transition_info()
+        prompt += "State Information (what to do when transitioning):\n"
+        for state_name, info in state_info.items():
+            prompt += f"- {state_name}: {info['description']}\n"
+            prompt += f"  → Must do: {info['first_asks']}\n"
+        
+        prompt += "\nExamples:\n"
+        prompt += "- Transitioning to REPORT_LOST: Acknowledge what they said AND ask about the lost animal type/last seen location.\n"
+        prompt += "- Transitioning to CASE_CONFIRMATION: Provide a COMPLETE summary of all collected info AND ask if it's correct.\n"
+        prompt += "\nCRITICAL: For CASE_CONFIRMATION, you must actually provide the summary, not just say 'let me summarize'.\n"
+        prompt += "===== END STATE TRANSITION OPTIMIZATION =====\n"
+        
         return prompt
+    
+    def _get_state_transition_info(self) -> Dict[str, str]:
+        """Get information about what each state needs when transitioning to it"""
+        # This maps state names to what they need/ask for first
+        state_info = {
+            "EMERGENCY_CASE": {
+                "description": "Handles injured, sick, or abused animal emergencies",
+                "first_asks": "the type of animal and its condition/emergency situation"
+            },
+            "REPORT_FOUND": {
+                "description": "Handles reports of found animals",
+                "first_asks": "what type of animal was found and where it was found"
+            },
+            "REPORT_LOST": {
+                "description": "Handles reports of lost pets",
+                "first_asks": "what type of animal is lost and where it was last seen"
+            },
+            "PET_SURRENDER": {
+                "description": "Handles pet surrender requests",
+                "first_asks": "what type of animal (if not already known) OR the reason for surrender (if type is known) - ONE question only"
+            },
+            "SCHEDULE_SURRENDER": {
+                "description": "Schedules appointment for pet surrender",
+                "first_asks": "when they would like to schedule the surrender appointment"
+            },
+            "CASE_CONFIRMATION": {
+                "description": "Confirms all collected information before finalizing",
+                "first_asks": "MUST provide a complete summary of all collected information (animal type, reason, contact, appointment time, etc.) and ask if everything is correct"
+            },
+            "FINAL_SUMMARY": {
+                "description": "Provides final summary and case number",
+                "first_asks": "nothing - provides summary and ends conversation"
+            }
+        }
+        return state_info
         
     def generate_progress_bar(self, context: Dict[str, Any]) -> str:
         """Generate a progress bar showing completion status"""
@@ -528,21 +584,20 @@ Remember to use the generate_response tool for your final response.
                 'timestamp': datetime.now().isoformat()
             }
             
-            # For transitions, we don't need a response message
-            # The next state's enter method will generate the response
+            # For transitions, we SHOULD have a response message (optimized single-call approach)
+            # The LLM should generate a response that asks for what the next state needs
             if next_action == StateResult.TRANSITION and next_state:
-                # Check if a response was provided (it's now optional)
+                # Check if a response was provided (it should be!)
                 if final_response and final_response.strip():
-                    # Log that a response was provided but won't be used
-                    print(f"🔧 SYSTEM: Transition requested with message: '{final_response[:50]}...' (will be ignored)")
-                    # We don't store the message anywhere as it won't be used
+                    # Store the message - this will be used by the state machine
+                    updated_context['message'] = final_response
+                    print(f"🔧 SYSTEM: Transition requested with message: '{final_response[:50]}...' (OPTIMIZED - will be used)")
                 else:
-                    # This is the expected behavior with the updated tool definition
-                    print(f"🔧 SYSTEM: Transition requested without message (correct behavior)")
-                
-                # Clear any existing message to ensure it doesn't interfere with the next state
-                if 'message' in updated_context:
-                    del updated_context['message']
+                    # This is the fallback behavior - no message provided
+                    print(f"🔧 SYSTEM: Transition requested without message (FALLBACK - next state will generate)")
+                    # Clear any existing message to ensure it doesn't interfere with the next state
+                    if 'message' in updated_context:
+                        del updated_context['message']
             # For other actions, store the final response message (only if we got one from tools)
             elif final_response and final_response.strip():
                 updated_context['message'] = final_response

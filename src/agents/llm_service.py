@@ -284,13 +284,21 @@ class LLMToolManager:
         # Tool for generating contextual responses
         self.register_tool(
             name="generate_response",
-            description="Generate appropriate response based on conversation state and context",
+            description="""Generate appropriate response based on conversation state and context.
+            
+            CRITICAL FOR TRANSITIONS: When next_action='transition', you MUST provide a response that:
+            1. Acknowledges any information the user just provided
+            2. Asks for the FIRST piece of information needed in the next state
+            3. Is natural and conversational, avoiding repetition
+            
+            The system will provide you with what the next state needs - use this to craft an appropriate question.
+            This eliminates the need for a second LLM call, making the conversation faster.""",
             parameters={
                 "type": "object",
                 "properties": {
                     "response": {
                         "type": "string",
-                        "description": "The response message to send to the user. IMPORTANT: For state transitions (when next_action='transition'), this field is optional and will be ignored. The next state's enter method will generate the response instead."
+                        "description": "The response message to send to the user. REQUIRED for all actions including transitions. For transitions, this should ask for the first piece of information needed in the next state."
                     },
                     "next_action": {
                         "type": "string",
@@ -307,7 +315,7 @@ class LLMToolManager:
                         "description": "Updates to add to conversation context"
                     }
                 },
-                "required": ["next_action"]
+                "required": ["response", "next_action"]
                 # Removed allOf, if/then conditions that aren't supported by OpenRouter
             }
         )

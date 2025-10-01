@@ -1,16 +1,23 @@
 from typing import Dict, Any, Optional
+import asyncio
+from queue import Queue
+from datetime import datetime
 from .animal_control_state import AnimalControlState, StateResult
 from .state_enum import StateEnum
 
 class StateMachine:
     """State machine engine for managing conversation flow"""
     
-    def __init__(self):
+    def __init__(self, call_logger=None):
         self.states: Dict[str, AnimalControlState] = {}
         self.current_state: Optional[AnimalControlState] = None
         self.context: Dict[str, Any] = {}
         self.conversation_history: list = []
         self.is_complete = False
+        self._processing = False  # Track if currently processing
+        self._input_queue = Queue()  # Queue for handling concurrent inputs
+        self.call_logger = call_logger  # Optional call logger for analytics
+        self._transition_start_time = None  # Track processing time
     
     def add_state(self, state: AnimalControlState) -> None:
         """Add a state to the state machine"""
@@ -22,7 +29,7 @@ class StateMachine:
             raise ValueError(f"State '{state_name}' not found")
         self.current_state = self.states[state_name]
     
-    def start_conversation(self) -> str:
+    def start_conversation(self, session_id: str = None) -> str:
         """Start the conversation and return the initial message"""
         if not self.current_state:
             raise RuntimeError("No initial state set")
@@ -31,22 +38,62 @@ class StateMachine:
         self.context['conversation_started'] = True
         self.context['turn_count'] = 0
         
+        # Start call logging if logger is available
+        if self.call_logger and session_id:
+            self.call_logger.start_call(
+                session_id=session_id,
+                initial_state=self.current_state.name
+            )
+        
         # Enter the initial state
         message = self.current_state.enter(self.context)
         self._log_interaction("SYSTEM", message)
         return message
     
     def process_user_input(self, user_input: str) -> str:
-        """Process user input and return the response"""
+        """Process user input and return the response (with concurrency protection)"""
         if not self.current_state:
             raise RuntimeError("No current state")
         
         if self.is_complete:
             return "This conversation has ended. Please start a new session."
         
+        # Check if already processing - queue the input
+        if self._processing:
+            print(f"⚠️ SYSTEM: Already processing - queuing input: '{user_input}'")
+            self._input_queue.put(user_input)
+            # Return a placeholder - the queued input will be processed after current one
+            return ""  # Empty response - the agent should handle this gracefully
+        
+        # Mark as processing
+        self._processing = True
+        
+        try:
+            # Process the current input
+            response = self._process_input_internal(user_input)
+            
+            # Process any queued inputs
+            while not self._input_queue.empty():
+                queued_input = self._input_queue.get()
+                print(f"🔄 SYSTEM: Processing queued input: '{queued_input}'")
+                response = self._process_input_internal(queued_input)
+            
+            return response
+        finally:
+            # Always release the lock
+            self._processing = False
+    
+    def _process_input_internal(self, user_input: str) -> str:
+        """Internal method that does the actual processing"""
+        # Track processing time
+        self._transition_start_time = datetime.now()
+        
         # Log user input
         self._log_interaction("USER", user_input)
         self.context['turn_count'] = self.context.get('turn_count', 0) + 1
+        
+        # Store current state for logging
+        from_state = self.current_state.name
         
         try:
             # Phase 1: Process input in current state to determine next action
@@ -65,8 +112,40 @@ class StateMachine:
                 # No transition, handle the result normally
                 response = self._handle_state_result(result, next_state_name)
             
-            # Log system response
+            # Log system response and store for duplicate detection
             self._log_interaction("SYSTEM", response)
+            self.context['last_response'] = response
+            
+            # Log to call logger if available
+            if self.call_logger:
+                processing_time = int((datetime.now() - self._transition_start_time).total_seconds() * 1000)
+                
+                # Extract LLM stats from context
+                llm_response = updated_context.get('last_llm_response', {})
+                
+                # Determine transition type
+                if result == StateResult.TRANSITION:
+                    transition_type = 'optimized' if updated_context.get('message') else 'fallback'
+                else:
+                    transition_type = 'continue'
+                
+                # Calculate context updates (what changed)
+                context_updates = {k: v for k, v in updated_context.items() 
+                                 if k not in self.context or self.context.get(k) != v}
+                
+                self.call_logger.log_transition(
+                    from_state=from_state,
+                    to_state=self.current_state.name,
+                    user_input=user_input,
+                    agent_response=response,
+                    context=self.context,
+                    context_updates=context_updates,
+                    transition_type=transition_type,
+                    llm_model=llm_response.get('model'),
+                    llm_tokens=llm_response.get('usage', {}).get('total_tokens') if isinstance(llm_response.get('usage'), dict) else None,
+                    processing_time_ms=processing_time
+                )
+            
             return response
             
         except Exception as e:
@@ -79,7 +158,7 @@ class StateMachine:
             return response
     
     def _handle_state_transition(self, next_state_name: str) -> str:
-        """Handle state transition with a two-phase approach"""
+        """Handle state transition with optimized single-LLM-call approach"""
         # Validate the state transition using the StateEnum
         if not StateEnum.is_valid_state(next_state_name):
             # If the requested state doesn't exist, log a warning and use CASE_CONFIRMATION as fallback
@@ -108,17 +187,9 @@ class StateMachine:
             print(f"⚠️ INVALID TRANSITION - State '{next_state_name}' does not exist")
             raise RuntimeError(f"Invalid transition to state: {next_state_name}")
         
-        # Check if there's a transition message to log (but we won't use it)
-        transition_message = self.context.get('transition_message')
-        if transition_message:
-            print(f"🔄 SYSTEM: STATE TRANSITION - Transition message provided but will use enter state output instead")
-            # Store the transition message in context for reference, but we won't display it
-            self.context['previous_transition_message'] = transition_message
-            # Clear the transition message to ensure it's not used
-            if 'transition_message' in self.context:
-                del self.context['transition_message']
-        else:
-            print(f"🔄 SYSTEM: STATE TRANSITION - No transition message provided")
+        # Check if there's a transition message from the LLM
+        # With the optimized approach, the LLM should provide this
+        transition_message = self.context.get('message')
         
         print(f"🔄 SYSTEM: STATE TRANSITION - Exiting '{self.current_state.name}' → Entering '{next_state_name}'")
         
@@ -130,9 +201,14 @@ class StateMachine:
         previous_state = self.current_state
         self.current_state = self.states[next_state_name]
         
-        # Always process the state entry to generate a response
-        # This is the second LLM call that generates a response in the new state context
-        response = self.current_state.process_state_entry(self.context, previous_state.name)
+        # OPTIMIZATION: Use the transition message if provided (single LLM call approach)
+        # Only fall back to process_state_entry if no message was provided
+        if transition_message and transition_message.strip():
+            print(f"🔄 SYSTEM: Using transition message from previous state (OPTIMIZED - no second LLM call)")
+            response = transition_message
+        else:
+            print(f"🔄 SYSTEM: No transition message provided, calling process_state_entry (FALLBACK - second LLM call)")
+            response = self.current_state.process_state_entry(self.context, previous_state.name)
         
         print(f"🔄 SYSTEM: Now in state '{next_state_name}'")
         return response
@@ -170,6 +246,14 @@ class StateMachine:
             else:
                 # If no FINAL_SUMMARY state or already in it, mark as complete
                 self.is_complete = True
+                
+                # End call logging
+                if self.call_logger:
+                    self.call_logger.end_call(
+                        final_state=self.current_state.name,
+                        completion_status='completed'
+                    )
+                
                 return self.context.get('completion_message', 
                                       "Thank you! The conversation is complete.")
         
