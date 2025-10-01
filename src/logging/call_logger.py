@@ -228,14 +228,26 @@ class CallLogger:
     def _clean_for_json(self, data: Any) -> Any:
         """
         Clean data for JSON serialization
-        Removes non-serializable objects and limits size
+        Only keeps relevant fields for reporting and analytics
         """
         if data is None:
             return None
         
         if isinstance(data, dict):
-            # Filter out non-serializable keys
-            exclude_keys = ['conversation_history', 'last_llm_response']
+            # Only include fields relevant for reporting
+            # Exclude: UI state, temporary messages, internal tracking
+            exclude_keys = [
+                'conversation_history',
+                'last_llm_response',
+                'last_response',
+                'message',
+                'turn_count',
+                'conversation_started',
+                'last_user_input',
+                'error_message',
+                'completion_message'
+            ]
+            
             cleaned = {}
             for key, value in data.items():
                 if key not in exclude_keys:

@@ -8,7 +8,6 @@ class ContextField(Enum):
     DETECTED_INTENT = "detected_intent"
     SERVICE_TYPE = "service_type"
     URGENCY_LEVEL = "urgency_level"
-    TURN_COUNT = "turn_count"
     
     # Animal information
     ANIMAL_TYPE = "animal_type"

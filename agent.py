@@ -9,7 +9,6 @@ from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import (
     openai,
-    cartesia,
     deepgram,
     noise_cancellation,
     silero,
@@ -121,9 +120,10 @@ async def entrypoint(ctx: agents.JobContext):
             language="multi"  # Supports multiple languages
         ),
         llm=openai.LLM(model="gpt-4o-mini"),  # Placeholder - overridden by llm_node
-        tts=cartesia.TTS(
-            model="sonic-2",
-            voice="f786b574-daa5-4673-aa0c-cbe3e8534c02"  # Default voice
+        tts=openai.TTS(
+            model="tts-1",
+            voice="nova",  # Female, energetic voice
+            speed=1.15     # 15% faster (range: 0.25 to 4.0)
         ),
         vad=silero.VAD.load(),  # Voice Activity Detection
         turn_detection=MultilingualModel(),  # Detect when user finishes speaking

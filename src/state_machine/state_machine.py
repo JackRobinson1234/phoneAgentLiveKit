@@ -34,9 +34,8 @@ class StateMachine:
         if not self.current_state:
             raise RuntimeError("No initial state set")
         
-        # Initialize context
-        self.context['conversation_started'] = True
-        self.context['turn_count'] = 0
+        # Initialize context (empty - no internal tracking fields)
+        # Only business data will be added by states
         
         # Start call logging if logger is available
         if self.call_logger and session_id:
@@ -90,7 +89,6 @@ class StateMachine:
         
         # Log user input
         self._log_interaction("USER", user_input)
-        self.context['turn_count'] = self.context.get('turn_count', 0) + 1
         
         # Store current state for logging
         from_state = self.current_state.name
@@ -100,6 +98,12 @@ class StateMachine:
             result, next_state_name, updated_context = self.current_state.process_input(
                 user_input, self.context
             )
+            
+            # Calculate context updates BEFORE updating self.context
+            # This captures what actually changed
+            internal_fields = {'message', 'last_llm_response', 'error_message', 'completion_message'}
+            context_updates = {k: v for k, v in updated_context.items() 
+                             if k not in internal_fields and (k not in self.context or self.context.get(k) != v)}
             
             # Update context with results from first phase
             self.context.update(updated_context)
@@ -112,9 +116,8 @@ class StateMachine:
                 # No transition, handle the result normally
                 response = self._handle_state_result(result, next_state_name)
             
-            # Log system response and store for duplicate detection
+            # Log system response
             self._log_interaction("SYSTEM", response)
-            self.context['last_response'] = response
             
             # Log to call logger if available
             if self.call_logger:
@@ -128,10 +131,6 @@ class StateMachine:
                     transition_type = 'optimized' if updated_context.get('message') else 'fallback'
                 else:
                     transition_type = 'continue'
-                
-                # Calculate context updates (what changed)
-                context_updates = {k: v for k, v in updated_context.items() 
-                                 if k not in self.context or self.context.get(k) != v}
                 
                 self.call_logger.log_transition(
                     from_state=from_state,

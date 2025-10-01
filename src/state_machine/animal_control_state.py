@@ -379,10 +379,6 @@ Remember to use the generate_response tool for your final response.
         if context.get('owner_contact'):
             info_parts.append(f"Contact: {context['owner_contact']}")
         
-        # Current progress
-        if context.get('turn_count'):
-            info_parts.append(f"Turn: {context['turn_count']}")
-        
         return "; ".join(info_parts)
     
     def _debug_context(self, context: Dict[str, Any], label: str) -> None:
