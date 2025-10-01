@@ -66,10 +66,20 @@ Collect necessary information like location, animal description, and contact det
             # Process the message with a timeout to prevent hanging
             # Run the synchronous method in an executor with timeout
             loop = asyncio.get_event_loop()
+            
+            # Debug: Log incoming message and current state
+            current_state = self.animal_control_agent.state_machine.get_current_state_name()
+            print(f"🔵 STATE: {current_state} | USER: {message}")
+            
             response = await asyncio.wait_for(
                 loop.run_in_executor(None, self.animal_control_agent.process_message, message),
                 timeout=30.0  # 30 second timeout
             )
+            
+            # Debug: Log new state and response
+            new_state = self.animal_control_agent.state_machine.get_current_state_name()
+            print(f"🟢 STATE: {new_state} | AGENT: {response[:100]}...")
+            
             return response
         except asyncio.TimeoutError:
             print(f"Timeout processing message: {message}")
@@ -113,9 +123,9 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
 
-    # Generate initial greeting
+    # Generate initial greeting with standard message
     await session.generate_reply(
-        instructions="Greet the user warmly and ask how you can help them with animal control services today."
+        instructions="Say exactly: 'Hello! Thank you for contacting Animal Control Services. How can I help you today?'"
     )
 
 
