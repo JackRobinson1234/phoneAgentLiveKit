@@ -34,59 +34,76 @@ class AnimalControlVoiceAssistant(Agent):
         # Get the initial greeting from our agent
         initial_greeting = self.animal_control_agent.start_conversation()
         
-        # Initialize the LiveKit Agent with our custom instructions
+        # Initialize the LiveKit Agent with a placeholder LLM
+        # We override llm_node to use our state machine instead
         super().__init__(
-            instructions=f"""You are a helpful voice AI assistant for Animal Control Services.
-            
-Your role is to help people with:
-- Reporting injured, abused, or emergency animal cases
-- Reporting found stray animals
-- Reporting lost pets
-- Scheduling pet surrenders
-- Providing general animal control information
-
-Be professional, empathetic, and efficient. Ask clarifying questions when needed.
-Collect necessary information like location, animal description, and contact details.
-
-{initial_greeting}"""
+            instructions=initial_greeting,
+            # We need to provide an LLM for LiveKit to call llm_node
+            # But we'll override it with our state machine
         )
     
-    async def on_message(self, message: str) -> str:
+    async def llm_node(
+        self,
+        chat_ctx,  # llm.ChatContext
+        tools,     # list[FunctionTool | RawFunctionTool]
+        model_settings,  # ModelSettings
+    ):
         """
-        Process incoming voice messages through our Animal Control Agent
+        Override the LLM node to use our state machine instead of OpenAI.
+        This is called automatically when the user finishes speaking.
         
         Args:
-            message: Transcribed user speech
+            chat_ctx: The conversation context with message history
+            tools: Available function tools (we don't use these)
+            model_settings: Model configuration (we don't use this)
             
-        Returns:
-            Agent's response to be spoken back
+        Yields:
+            str: Response text from our state machine
         """
+        import asyncio
+        import traceback
+        
         try:
-            import asyncio
-            # Process the message with a timeout to prevent hanging
-            # Run the synchronous method in an executor with timeout
+            # Get the last user message from the chat context
+            # ChatContext uses 'items' not 'messages'
+            user_input = ""
+            if hasattr(chat_ctx, 'items') and chat_ctx.items:
+                last_message = chat_ctx.items[-1]
+                # Handle different message formats
+                if hasattr(last_message, 'content'):
+                    if isinstance(last_message.content, list):
+                        # Content is a list of content parts
+                        user_input = " ".join(str(part) for part in last_message.content)
+                    else:
+                        user_input = str(last_message.content)
+                else:
+                    user_input = str(last_message)
+            
+            print(f"🎤 User said: {user_input}")
+            
+            # Process through our state machine with timeout
             loop = asyncio.get_event_loop()
-            
-            # Debug: Log incoming message and current state
-            current_state = self.animal_control_agent.state_machine.get_current_state_name()
-            print(f"🔵 STATE: {current_state} | USER: {message}")
-            
             response = await asyncio.wait_for(
-                loop.run_in_executor(None, self.animal_control_agent.process_message, message),
+                loop.run_in_executor(
+                    None, 
+                    self.animal_control_agent.process_message, 
+                    user_input
+                ),
                 timeout=30.0  # 30 second timeout
             )
             
-            # Debug: Log new state and response
-            new_state = self.animal_control_agent.state_machine.get_current_state_name()
-            print(f"🟢 STATE: {new_state} | AGENT: {response[:100]}...")
+            print(f"🤖 Agent responding: {response[:100]}...")
             
-            return response
+            # Yield the response (LiveKit expects an async generator)
+            yield response
+            
         except asyncio.TimeoutError:
-            print(f"Timeout processing message: {message}")
-            return "I'm sorry, that's taking longer than expected. Could you please repeat that?"
+            print(f"⏱️ Timeout processing message: {user_input}")
+            yield "I'm sorry, that's taking longer than expected. Could you please repeat that?"
         except Exception as e:
-            print(f"Error processing message: {e}")
-            return "I apologize, but I encountered an error processing your request. Could you please try again?"
+            print(f"❌ Error in llm_node: {e}")
+            traceback.print_exc()
+            yield "I apologize, but I encountered an error. Could you please try again?"
 
 
 async def entrypoint(ctx: agents.JobContext):
@@ -97,14 +114,13 @@ async def entrypoint(ctx: agents.JobContext):
     """
     
     # Create the agent session with STT-LLM-TTS pipeline
+    # We provide a minimal LLM so LiveKit calls llm_node, but we override it
     session = AgentSession(
         stt=deepgram.STT(
             model="nova-3",
             language="multi"  # Supports multiple languages
         ),
-        llm=openai.LLM(
-            model="gpt-4o-mini"  # Fast and cost-effective
-        ),
+        llm=openai.LLM(model="gpt-4o-mini"),  # Placeholder - overridden by llm_node
         tts=cartesia.TTS(
             model="sonic-2",
             voice="f786b574-daa5-4673-aa0c-cbe3e8534c02"  # Default voice
@@ -113,20 +129,22 @@ async def entrypoint(ctx: agents.JobContext):
         turn_detection=MultilingualModel(),  # Detect when user finishes speaking
     )
 
+    # Create our agent instance
+    agent = AnimalControlVoiceAssistant()
+    
     # Start the session
     await session.start(
         room=ctx.room,
-        agent=AnimalControlVoiceAssistant(),
+        agent=agent,
         room_input_options=RoomInputOptions(
             # Use BVCTelephony for phone calls (optimized for telephony audio)
             noise_cancellation=noise_cancellation.BVCTelephony(),
         ),
     )
 
-    # Generate initial greeting with standard message
-    await session.generate_reply(
-        instructions="Say exactly: 'Hello! Thank you for contacting Animal Control Services. How can I help you today?'"
-    )
+    # Speak the initial greeting from our state machine
+    # (The greeting was already generated when we initialized the agent)
+    session.say(agent.instructions)
 
 
 if __name__ == "__main__":
