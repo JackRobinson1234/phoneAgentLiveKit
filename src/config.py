@@ -28,3 +28,14 @@ def get_api_base_url():
         return RAILWAY_URL
     else:
         return f"http://localhost:{API_PORT}"
+LLM_CONFIG = {
+    'provider': 'openrouter',
+    'api_base_url': 'https://openrouter.ai/api/v1',
+    'model': 'anthropic/claude-3.5-sonnet',  # Default model
+    'temperature': 0.7,
+    'max_tokens': 1000,
+    'timeout': 30,
+    'retry_attempts': 3,
+    'use_tools': True,
+    'fallback_model': 'openai/gpt-3.5-turbo',
+}

@@ -4,8 +4,7 @@ from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 import openai
 from dotenv import load_dotenv
-
-from src.settings import LLM_CONFIG, AVAILABLE_MODELS
+from src.config import LLM_CONFIG
 
 # Load environment variables
 load_dotenv()
