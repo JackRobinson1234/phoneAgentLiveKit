@@ -62,9 +62,18 @@ Collect necessary information like location, animal description, and contact det
             Agent's response to be spoken back
         """
         try:
-            # Process the message through our existing agent
-            response = self.animal_control_agent.process_message(message)
+            import asyncio
+            # Process the message with a timeout to prevent hanging
+            # Run the synchronous method in an executor with timeout
+            loop = asyncio.get_event_loop()
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, self.animal_control_agent.process_message, message),
+                timeout=30.0  # 30 second timeout
+            )
             return response
+        except asyncio.TimeoutError:
+            print(f"Timeout processing message: {message}")
+            return "I'm sorry, that's taking longer than expected. Could you please repeat that?"
         except Exception as e:
             print(f"Error processing message: {e}")
             return "I apologize, but I encountered an error processing your request. Could you please try again?"
