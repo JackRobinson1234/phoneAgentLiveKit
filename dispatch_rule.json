@@ -1,7 +1,0 @@
-{
-    "name": "Animal Control Dispatch",
-    "trunk_ids": ["ST_ftkVFw9JRDAg"],
-    "dispatchRuleIndividual": {
-        "roomPrefix": "animal-control-"
-    }
-}

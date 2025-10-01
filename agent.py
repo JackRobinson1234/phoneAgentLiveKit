@@ -17,7 +17,7 @@ from livekit.plugins import (
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # Import our existing animal control agent
-from agents.llm_animal_control_agent import LLMAnimalControlAgent
+from src.agents.llm_animal_control_agent import LLMAnimalControlAgent
 
 # Load environment variables from .env.local (LiveKit standard) or .env
 load_dotenv(".env.local")

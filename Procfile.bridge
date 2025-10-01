@@ -1,1 +1,0 @@
-web: gunicorn twilio_sip_bridge:app
