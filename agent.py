@@ -121,9 +121,9 @@ async def entrypoint(ctx: agents.JobContext):
         ),
         llm=openai.LLM(model="gpt-4o-mini"),  # Placeholder - overridden by llm_node
         tts=openai.TTS(
-            model="tts-1",
-            voice="nova",  # Female, energetic voice
-            speed=1.15     # 15% faster (range: 0.25 to 4.0)
+            model="tts-1-hd",  # HD model is more reliable
+            voice="nova",      # Female, energetic voice
+            speed=1.15         # 15% faster (range: 0.25 to 4.0)
         ),
         vad=silero.VAD.load(),  # Voice Activity Detection
         turn_detection=MultilingualModel(),  # Detect when user finishes speaking

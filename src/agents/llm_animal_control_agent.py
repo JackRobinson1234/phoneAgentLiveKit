@@ -85,6 +85,9 @@ class LLMAnimalControlAgent:
         
         print(f"🎬 Starting conversation with session ID: {self.session_id}")
         
+        # Reset context for new conversation
+        self.state_machine.context.clear()
+        
         # Create a concise greeting message
         greeting = "Hello! I'm here to help with animal control services. How can I assist you today?"
         
